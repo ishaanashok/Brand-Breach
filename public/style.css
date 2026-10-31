@@ -171,16 +171,19 @@ tr.click:hover, tr.sel { background: var(--raised); }
 .kb-intro-head p { margin: 4px 0 0; font-size: 14px; }
 .kb-bar { height: 2px; margin: 18px 0 26px; background: var(--line); }
 .kb-bar i { display: block; height: 100%; width: 0; background: #fff; transition: width .3s; }
-.kb-intro-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 24px; }
+.kb-intro-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 20px 24px; }
+.kb-col-images { grid-column: 1 / -1; order: -1; }
+@media (max-width: 760px) { .kb-intro-grid { grid-template-columns: minmax(0, 1fr); } }
 .kb-col h3 { margin: 0 0 8px; font-size: 13px; font-weight: 500; color: var(--muted); }
 .kb-rows { list-style: none; margin: 0; padding: 0; font-size: 13px; }
 .kb-rows li { padding: 5px 0 5px 18px; border-top: 1px solid var(--line); overflow-wrap: anywhere; position: relative; animation: kb-in .3s ease-out; }
 .kb-rows li::before { content: "✓"; position: absolute; left: 0; color: #d9b44a; }
 .kb-rows li.kb-pattern::before { content: "!"; left: 4px; font-weight: 700; color: #e5534b; }
-.kb-shots { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+.kb-shots { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 8px; min-height: 240px; }
+@media (max-width: 560px) { .kb-shots { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
 .kb-shot { margin: 0; padding: 8px; border: 1px solid var(--line); border-radius: 10px; font-size: 12px; animation: kb-in .3s ease-out; }
-.kb-shot img { display: block; width: 100%; height: 118px; object-fit: cover; border-radius: 5px; background: #111; }
-.kb-shot img.whole { object-fit: contain; background: #fff; }
+.kb-shot img { display: block; width: 100%; height: clamp(120px, 24vh, 240px); object-fit: contain; border-radius: 5px; background: #111; }
+.kb-shot img.whole { background: #fff; }
 .kb-shot figcaption { margin-top: 4px; }
 .kb-shot small { display: block; font-size: 11px; }
 @keyframes kb-in { from { opacity: 0; transform: translateY(5px); } }

@@ -200,8 +200,8 @@ const KbGraph = (() => {
 
 /** Plays the fixed gathering sequence, and resolves when it ends or the person skips it. */
 const KbIntro = (() => {
-  const ROW_MS = 340
-  const END_MS = 1100
+  const TOTAL_MS = 12000
+  const END_MS = 1200
   const esc = s => String(s).replace(/[&<>"']/g, ch => `&#${ch.charCodeAt(0)};`)
   const renderItem = (kind, item) => {
     if (kind === 'images') return `<figure class="kb-shot"><img src="${esc(item.src)}" alt="${esc(item.name)}"${item.whole ? ' class="whole"' : ''}><figcaption>${esc(item.name)}<small>${esc(item.note)}</small></figcaption></figure>`
@@ -219,13 +219,14 @@ const KbIntro = (() => {
     root.innerHTML = `<div class="kb-intro-head"><div><div id="kbIntroPhrase" aria-live="polite"></div>
         <p id="kbIntroLine" class="muted"></p></div><button id="kbIntroSkip" type="button">Skip</button></div>
       <div class="kb-bar"><i id="kbIntroBar"></i></div>
-      <div class="kb-intro-grid">${sections.map((s, i) => `<section class="kb-col" data-col="${i}"><h3>${esc(s.title)}</h3>
+      <div class="kb-intro-grid">${sections.map((s, i) => `<section class="kb-col kb-col-${esc(s.kind)}" data-col="${i}"><h3>${esc(s.title)}</h3>
         ${s.kind === 'images' ? '<div class="kb-shots"></div>' : '<ul class="kb-rows"></ul>'}</section>`).join('')}</div>`
     root.hidden = false
     return new Promise(resolve => {
       let timer
       let done = 0
-      const finish = () => { clearTimeout(timer); root.hidden = true; root.innerHTML = ''; resolve() }
+      const rowMs = (TOTAL_MS - END_MS) / steps.length
+      const finish = () => { clearTimeout(timer); root.querySelector('#kbIntroSkip').disabled = true; resolve() }
       root.querySelector('#kbIntroSkip').onclick = finish
       const phrase = root.querySelector('#kbIntroPhrase')
       const say = text => { if (phrase.textContent !== text) phrase.innerHTML = `<h2>${esc(text)}</h2>` }
@@ -243,10 +244,12 @@ const KbIntro = (() => {
         done++
         line.textContent = `Rolex: ${done} of ${steps.length} references`
         bar.style.width = `${done / steps.length * 100}%`
-        timer = setTimeout(next, ROW_MS)
+        timer = setTimeout(next, rowMs)
       }
       next()
     })
   }
-  return { play }
+  /** Stays up until the web is ready, so that nothing else shows in between. */
+  const close = root => { root.hidden = true; root.innerHTML = '' }
+  return { play, close }
 })()

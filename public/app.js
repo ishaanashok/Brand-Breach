@@ -83,24 +83,29 @@ $('form').onsubmit = async e => {
   try {
     // Rolex has a starter knowledge base: it is shown being gathered first, and its sites are never flagged.
     const rolex = f.get('brand').trim().toLowerCase() === 'rolex'
-    if (rolex) await KbIntro.play($('kbIntro'))
+    const intro = rolex ? KbIntro.play($('kbIntro')) : null
+    // Starting takes a few seconds, so it begins before the page ends, and the page still lasts 12 seconds.
+    if (intro) await Promise.race([intro, new Promise(done => setTimeout(done, HUNT_STARTS_AFTER_MS))])
     const res = await post('/api/hunts', {
       brand: f.get('brand'), keywords: list(f.get('keywords')).length ? list(f.get('keywords')) : [f.get('brand').trim()],
       officialDomains: [...new Set([...list(f.get('officialDomains')), ...(rolex ? RolexKb.OFFICIAL_DOMAINS : [])])],
       authorizedSellers: list(f.get('authorizedSellers')), budgetUsd: Number(f.get('budgetUsd')), precision: f.get('precision'),
     })
     const body = await res.json()
+    await intro
     if (!res.ok) { $('formError').textContent = body.error; return }
     openHunt(body.id)
     showTab('web')
   } catch {
     $('formError').textContent = 'Could not reach the server. Is it still running?'
   } finally {
+    KbIntro.close($('kbIntro'))
     b.disabled = false
     b.textContent = 'Start hunt'
   }
 }
 
+const HUNT_STARTS_AFTER_MS = 6000
 function openHunt(id) {
   huntId = id
   version = -1
