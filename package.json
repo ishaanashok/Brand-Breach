@@ -1,0 +1,21 @@
+{
+  "name": "customs",
+  "private": true,
+  "type": "module",
+  "engines": { "bun": ">=1.4.2" },
+  "scripts": {
+    "dev:actors": "durable-actors dev",
+    "generate": "durable-actors generate",
+    "start": "bun src/server/main.ts",
+    "test": "bun test",
+    "check": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@agent-relay/sdk": "14.0.0",
+    "durable-actors": "0.14.6"
+  },
+  "devDependencies": {
+    "@types/bun": "latest",
+    "typescript": "~5.9.3"
+  }
+}

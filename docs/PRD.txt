@@ -1,0 +1,820 @@
+PAGES 21
+
+
+PRD: Customs, a Cost-Aware Agent Swarm for Brand Abuse
+PRD: Customs, a Cost-Aware Agent Swarm for
+Brand Abuse
+Oct 30, 2026 ·
+@Ash
+Overview
+Customs is a cost-aware swarm of cheap agents that hunts counterfeit listings, scam
+promotions, and AI-video impersonation of a brand, then lets a human approve drafted
+takedowns. The headline metric is dollars per verified infringement.
+Working title: Customs (changeable). Event: Haunted Hacks, October 31, 2026, San
+Francisco, with hacking from 11:00am to 4:00pm and submission at 4:00pm.
+Pitch: a swarm that spends model dollars deliberately and remembers what worked, so
+each hunt for a brand is cheaper and smarter than the last.
+How it works: the user sets a brand, keywords, protected assets, and a budget. Scouts
+(separate agents on cheap models) search different surf aces. Every candidate gets a f ast
+triage decision from a pluggable decider (the OpenAI Decisions API, or a local Laya model
+while access is pending), and the best candidates are verified with richer evidence. A
+human approves or rejects drafted takedown notices. A per-brand actor stores the graph
+of sites, listings, and sellers and learns which search lanes pay off . An orchestrator steers
+the scouts live over Agent Relay , and all state lives in T erse Durable Actors.
+Scope of this build: notices are drafted and approved but only simulated-submitted. The
+demo is a live run on T esla and Musk with a recorded replay as the f allback.
+Understanding and assumptions
+This section separates what you told me from what I assumed, so you can correct it
+before any implementation plan is written.
+What you told me
+A user starts a hunt by setting a budget, the brand, keywords, and similar inputs.
+The orchestrator has its own state and search memory (what works best). Each brand
+has its own durable actor with a graph of searched listings and sites and which were
+infringing.
+
+
+PRD: Customs, a Cost-Aware Agent Swarm for Brand Abuse
+Search is done cheaply by small agents (Luna or Haiku). Many cheap classification calls
+(Jev and the OpenAI Decisions API) follow . Classifying during the search is useful
+because it tells the agent whether a search is working.
+The dashboard shows an overall summary , a detailed search report, and approval for
+specific takedowns.
+T akedowns go through human approval and can be a demoable feature only .
+The demo can be a live run on a controversial brand such as T esla or Musk, with f aking
+it as the safer option.
+Focus on the T erse Durable Actors and Agent Relay tracks. Everything else is extra.
+A custom backend is needed instead of an existing coding harness.
+What I assumed
+Scouts run on Luna (covered by the OpenAI credits) instead of Haiku, which needs a
+separate Anthropic key . The Decisions API is the target classifier and a local Laya
+model is the testing stand-in, both behind one interf ace, and Jev is an optional text-
+only adapter .
+The orchestrator process holds nothing durable. Its state lives in the Hunt, Brand, and
+Playbook actors, so it can restart mid-run.
+A global Playbook actor holds anonymized strategy priors. Per-brand data stays in that
+brand's actor .
+Every candidate gets inline triage on cheap inputs, and a shortlist gets verified with
+richer evidence.
+The demo runs live and also has a recorded replay through the same pipeline. Scam
+sites are opened only in a sandbox, and no real takedown is submitted.
+The stack is T ypeScript on Node, with five scouts.
+This spec covers the one-day event build, not a product roadmap.
+Added in this revision: you said there is no Decisions API access yet, so a local Laya model
+is added for testing, the Decisions API stays, and the two must be drop-in replacements
+for each other . I assumed Laya runs as a local sidecar , handles text only , and needs its own
+calibration.
+Comment on anything that is wrong and I will revise it.
+
+
+PRD: Customs, a Cost-Aware Agent Swarm for Brand Abuse
+Problem and opportunity
+Brand abuse now spans f ake listings, scam promotions in messaging channels, and AI-
+generated videos, and finding it is costly because it is spread across many surf aces and
+disappears quickly .
+T esla and Musk are a well-documented example:
+Deepf ake videos of Musk promote a f ake $100M T esla crypto giveaway that sends
+victims to lookalike T esla promotion sites.
+The scam is spread through Y ouT ube livestreams, T elegram and Discord groups, and
+paid search ads.
+A threat report describes reuse of infrastructure and templates across scam
+operations, which is what makes a graph of sites and sellers useful.
+These pages are often deleted after a campaign, so a hunt has to be f ast and its
+findings recorded.
+The market is real: one review reports Red Points serving 1,300+ brands and processing
+90M+ signals a day . The question this project explores is economic: how much model
+spend each verified finding takes, and whether durable memory lowers it across repeated
+hunts.
+Competitive landscape
+Every headline feature already exists in an incumbent, so the claim here is the
+combination and the economics, not a new category .
+Product What it already does Overlap with Customs
+Red Points Doppel BrandShield Image recognition, OCR, logo fingerprinting,
+takedowns through direct platform
+connections, a repeat-offender network, and
+deepf ake protection launched July 2026
+Brand and impersonation monitoring that
+includes Discord and T elegram
+Clustering of related infringing actors
+(ClusterX) with human validation
+Detection, graph,
+takedowns
+Channel monitoring,
+takedowns
+Actor graph, human review
+Where Customs aims to differ:
+
+
+PRD: Customs, a Cost-Aware Agent Swarm for Brand Abuse
+A cost-aware cascade with budget reservations, so spend per verified finding is
+measured and capped.
+A swarm of separate agents steered live over Agent Relay , with scouts handing leads to
+each other .
+Per-brand memory in durable actors that tunes search lanes, so a second hunt is
+cheaper or f aster .
+A human approval gate on every drafted notice.
+I could not confirm whether incumbents run agent swarms internally , so the pitch should
+rest on the measured economics and the live demo.
+Users and use cases
+The primary user is a brand protection analyst who needs wide coverage at a controlled
+cost.
+User What they need Example in the demo
+Brand protection
+analyst
+Legal counsel Fraud or security
+team
+Broad, cheap discovery and a
+ranked review queue
+A clear evidence trail and control
+over what is sent
+Early warning on impersonation
+campaigns and their
+infrastructure
+Hunting T esla-themed scam
+promotions across several
+surf aces
+Approving or rejecting each
+drafted notice
+Seeing lookalike sites and
+channels clustered in the graph
+It would be used wherever a brand has abuse spread across marketplaces, social
+platforms, messaging channels, and video: counterfeits, f ake promotions, and
+impersonation scams.
+Product principles and non-goals
+Every design choice should protect cost control, human approval, and safe handling of
+scam content.
+Principles
+
+
+PRD: Customs, a Cost-Aware Agent Swarm for Brand Abuse
+1. Cost is a first-class constraint. Scouts reserve budget before spending, and a hunt
+stops at its budget.
+2. A human approves every takedown. Nothing is submitted automatically .
+3. Results are candidates flagged for review , never accusations.
+4. Memory compounds: each hunt should make the next one cheaper or f aster .
+5. Scam content is opened only in a sandbox, never in the presenter's own browser .
+6. Agent Relay carries coordination, and the actors hold state and make the rules.
+7. Live and replay modes run the same pipeline.
+Non-goals
+Submitting real takedown notices.
+Claiming deepf ake detection beyond classifying thumbnails and keyframes.
+Scraping private groups or login-walled content.
+Production-grade multi-tenant authentication.
+Legal advice.
+User flow
+A hunt runs in eight steps, from setup to the labels that make the next hunt better .
+1. Set up: the user enters the brand, keywords, protected assets (logos, official domains),
+authorized sellers, a budget, and a precision-versus-recall setting. The server creates
+the Hunt actor and loads the Brand and Playbook actors.
+2. Assign: the orchestrator picks a lane for each scout from past hit rates per dollar and
+sends each an assignment over Agent Relay .
+3. Search and triage: each scout reserves a small amount of budget, searches its lane,
+and triages every candidate with a Decisions API call.
+4. Dedupe: each candidate goes to a Case actor whose id comes from the canonical URL,
+so several scouts finding the same listing create one case.
+5. Share leads: scouts message each other about sellers, domains, wallets, and channels,
+and the server records each link as a graph edge.
+6. Steer: the orchestrator watches yield per dollar and redirects scouts that are not
+paying off .
+7. Verify and draft: the best candidates get richer evidence and a second decision, then
+a takedown notice is drafted for each verified case.
+
+
+PRD: Customs, a Cost-Aware Agent Swarm for Brand Abuse
+8. Approve and learn: the user approves or rejects each notice. Every decision is stored
+as a label that updates the brand's whitelist, thresholds, and lane statistics.
+Requirements
+P0 items are required for the demo to work, P1 items make it distinctive, and P2 items are
+polish or stretch. Numeric targets are proposals until measured.
+Priority Requirement Acceptance check
+P0 P0 P0 P0 P0 Hunt setup with brand, keywords,
+assets, authorized sellers, budget, and
+precision-versus-recall setting
+Orchestrator plus at least four scouts,
+each a separate Relay agent on a cheap
+model
+Budget reservation, live cost meter ,
+and a hard stop
+One Case actor per candidate, with its
+id derived from the canonical URL
+All fields are saved in the Hunt actor
+Each scout appears in the roster and
+posts to the hunt channel
+T otal spend never exceeds the budget
+when five scouts race
+Five simultaneous reports of one URL
+create one case and four duplicate
+results
+Each case stores answers,
+probabilities, confidence, and cost
+P0 P0 P0 P0 Inline triage of every candidate
+through the decider interf ace (OpenAI
+Decisions API or local Laya)
+V erification of a shortlist ranked by
+value per dollar
+Dashboard with counters, cost meter ,
+case list, evidence, and a "why flagged"
+explanation
+Approval queue with a drafted notice,
+approve and reject, and a simulated
+submit
+Restart durability Only the top or uncertain cases get
+richer evidence and a second decision
+Updates live from actor snapshots over
+websockets
+A case reaches approved or rejected
+and nothing is actually submitted
+After killing and restarting the server ,
+the hunt, cases, and roster resume
+
+
+PRD: Customs, a Cost-Aware Agent Swarm for Brand Abuse
+Priority Requirement Acceptance check
+P0 P1 P1 Replay mode Live steering by the orchestrator Scout-to-scout lead hand-offs A recorded tape runs through the same
+actors, scouts, and classifier
+A steer message changes a scout's lane
+within about 20 seconds and shows in
+the UI
+A lead creates a graph edge and a
+follow-up search by the receiving scout
+Edges appear live as leads are found
+P1 Graph view of sellers, listings, domains,
+wallets, and channels
+P1 Feedback loop from approvals and
+rejections
+Labels update the whitelist, thresholds,
+and lane statistics
+P1 Second-run view A second hunt shows remembered lane
+stats and lower cost or f aster first
+verified finding
+P1 Summary and detailed report T otals by surf ace, cost per verified
+finding, and per-case detail
+P1 Sandboxed evidence capture Screenshots are taken in an isolated
+environment, never in the presenter's
+browser
+P2 An outside agent joins as a scout A second participant registers, claims a
+lane, and reports candidates
+P2 Belt-style dashboard skin Candidates animate through triage,
+verify , and approve stations
+P2 Jev as a text-only second opinion or
+f allback
+Disagreement between models raises a
+case's review priority
+P2 Supabase for vectors, screenshots,
+and per-brand access rules
+Embedding shortlist and stored
+evidence work
+P2 Mastra workflow for approvals The workflow pauses until a human
+decides
+P2 Re-check button A case can be marked resolved or
+relisted
+
+
+PRD: Customs, a Cost-Aware Agent Swarm for Brand Abuse
+System architecture
+architecture · 4 actors, 1 Relay workspace, 1 dashboard
+Scouts and the orchestrator talk over Relay and change state only through actor methods.
+The server process hosts the orchestrator , the approval routes, and the replay switch. The
+dashboard renders actor snapshots, and approvals go through the Case actor and are
+announced in the review channel.
+Actors and data model
+Four actor types hold all durable state, and none of them calls a model.
+
+
+PRD: Customs, a Cost-Aware Agent Swarm for Brand Abuse
+Actor Id Persisted state Key methods
+Playbook global Anonymized strategy
+priors per lane (tries,
+hits, cost)
+Brand brand slug Protected assets,
+authorized sellers,
+labeled examples, seen-
+sites log, graph edges,
+per-lane stats,
+thresholds
+Hunt hunt id Brand, keywords, budget,
+spent, reserved, scout
+roster with lanes and
+status, counters, recent
+events, a version number
+Case hash of brand
+and canonical
+URL
+State, URL, surf ace, first
+and later reporters,
+triage answers, evidence
+references, verification
+result, notice draft,
+approval record
+getPriors, update
+addEdges,
+recordLaneOutcome,
+addLabel, getLaneStats,
+snapshot
+reserve, settle,
+registerScout, setLane,
+bump, snapshot
+report, setTriage,
+setVerification,
+draftNotice, decide,
+snapshot
+Rules for building them
+Methods run one at a time, so keep them short. Scouts and the server make model
+calls, and actors only record the results.
+Case ids come from the canonical URL, so duplicate reports collapse into the same
+actor and report returns whether the caller was first.
+Every snapshot carries a version number , and the UI ignores older versions, because a
+Durable Actors release note warned that socket messages can arrive out of order .
+Actor-to-actor calls are unverified, so the server calls each actor through its generated
+client.
+Canonical URLs: before hashing, lowercase the host, strip tracking parameters, and
+normalize known short links, so the same listing always maps to the same Case.
+
+
+PRD: Customs, a Cost-Aware Agent Swarm for Brand Abuse
+Agent Relay design
+Relay carries every message between agents and people, and nothing that must be
+exactly right: state changes go through the actors.
+Workspace and participants: one workspace per hunt. P articipants are the orchestrator ,
+five scouts (marketplace, social, channels, domains, video), and the human reviewer . A
+judge's outside agent may join as an extra scout. Channels are the hunt channel for
+coordination and a review channel for approvals. Steering and leads are direct messages.
+Messages. Relay carries text, so each message starts with a tag followed by JSON.
+T ag From and to P ayload Effect
+ASSIGN Orchestrator to
+scout
+Lane (source, strategy ,
+query) and a budget slice
+STEER Orchestrator to
+New lane and a reason scout
+NEW Scout to hunt
+channel
+Case id, URL, lane LEAD Scout to scout Kind (seller , domain,
+wallet, channel), value,
+note
+Case id Scout starts the lane
+Scout switches at its next
+iteration
+Announces a new case to
+the room
+Receiver searches it and the
+server adds a graph edge
+REVIEW Server to review
+channel
+DECISION Human to server Case id, approve or reject The human sees a case
+waiting for approval
+Server updates the case and
+the brand's labels
+Steering rule. The orchestrator ticks about every 8 seconds, ranks lanes by provisional
+hits per dollar with an exploration bonus, and sends at most one steer per scout every 20
+seconds. Every steer carries a reason that the dashboard displays.
+API notes from the SDK docs
+Create a workspace, register each participant with relay.workspace.register({
+name, type: 'agent' }), and listen with relay.addListener('message.created'
+,
+...). Messages go out with agent.sendMessage({ to }), where to is a channel, a
+handle, or a list of handles.
+
+
+PRD: Customs, a Cost-Aware Agent Swarm for Brand Abuse
+On a workspace-key client, realtime delivery is off by def ault, so call await
+relay.workspace.stream.set(true) or listeners receive nothing.
+Registered actions are fire-and-forget, with results arriving as action.completed
+events, so use the actor clients for state changes.
+Status predicates such as agent.status.becomes('idle') can drive dashboard
+animations.
+Classification cascade and harness
+Every candidate gets a cheap triage decision, and only the best candidates earn
+expensive evidence, so spend follows expected value.
+Stage Input Method Output
+0. Rules URL, seller , price, text Authorized-seller
+whitelist, duplicate
+check, simple price
+flags
+1. T riage, every
+candidate
+One decider call with 3
+to 5 questions
+Skip or continue
+(free)
+2. V erification,
+shortlist
+Title, snippet, URL,
+thumbnail at 512 px or
+less
+Sandbox screenshot,
+full text, video
+keyframes
+Probabilities,
+confidence, cost
+Second decider call on
+richer evidence, then a
+larger model only if
+confidence is low
+Human decision V erdict and a "why
+flagged" explanation
+3. Approval Case, evidence, draft
+notice
+Label for the brand's
+memory
+Triage questions (the exact field names should be taken from the API playground): a
+predicate for impersonating the brand, a predicate for a scam or giveaway , a choice for the
+surf ace (marketplace listing, social post, channel, website, video, other), and a score for
+severity . Shortlist by probability times value divided by estimated cost, within the
+remaining budget. Dependent questions go in separate calls, as OpenAI's guide
+recommends.
+
+
+PRD: Customs, a Cost-Aware Agent Swarm for Brand Abuse
+Learning from results. Lane statistics use the triage probability as a provisional reward,
+corrected when verification or a human decision arrives. Thresholds are tuned on human
+labels and the recorded tape.
+Latency expectations
+OpenAI says decisions take 100 to 180 ms, a vendor-reported figure.
+A competitor's model card measured OpenAI's gpt-6-luna Decisions on images at 194
+ms median and 334 ms p95 for 512 by 512, and 373 ms and 763 ms for 1024 by 1024. That
+is indicative only , and I found no measurement for text with several questions.
+A router reported GPT -6 Luna chat completions at 699 ms median and 7.6 s p95, so
+scouts need timeouts.
+Proposed target for triage: about 500 ms median and under 1.5 s at p95, including
+network. Measure on real payloads first, run 8 to 16 calls in parallel, and keep
+thumbnails small.
+Pricing is $0.10 per million input tokens with no output charge, and image token pricing
+is not published, so read each response's usage.
+Reports differ on the question limit per request (400 versus 10), so ask at most 5. Send
+images as base64 data URLs. Jev is text-only and cheaper at $0.042 per million tokens,
+and OpenRouter also serves it.
+Local Laya: reports of about 30 to 35 ms per decision and about 1.3 GB of RAM are
+unverified on our hardware. Measure it on the event laptop, on CPU and on GPU, and set
+its latency target from that run.
+The custom harness
+Scouts only search, classify , and report, so a coding-agent harness adds weight. The
+harness is a thin T ypeScript runtime with these parts:
+Scout loop: reserve budget, search, triage, report, and check for steering between
+iterations.
+Source interface with live and recorded implementations behind one type.
+Metered model wrapper that records tokens and dollars for every call and settles
+them with the Hunt actor .
+Relay adapter that registers each scout and parses tagged messages.
+Policy function that turns calibrated scores and costs into the shortlist.
+
+
+PRD: Customs, a Cost-Aware Agent Swarm for Brand Abuse
+Stateless recovery: after a crash a scout re-registers, reads its lane from the Hunt
+actor , and continues.
+type Source = { search(lane: Lane): Promise<Hit[]> } // Live | Tape
+type Scout = { name: string; lane: Lane; loop(): Promise<void> }
+Interchangeable deciders
+Every classification call goes through one Decider interf ace, so the OpenAI Decisions
+API and a local Laya model are drop-in replacements chosen by configuration.
+Why both. There is no Decisions API access yet, so Laya lets the team build and test the
+whole pipeline offline. It also stays useful later as a free f allback when the hosted API
+errors or rate-limits.
+What Laya is. An open-weight decision model from ConvAI Innovations, released
+September 18, 2026 under Apache 2.0. The English model has 421M parameters on
+ModernBERT -large and a 512-token context, though one listing says 1k, so truncate to 512
+to be safe. It returns typed answers with probabilities in one forward pass and generates
+no text. Reports put it at about 30 to 35 ms per decision on a commodity GPU. It scores
+well on binary safety-style calls such as spam (0.993) and phishing (0.980), and is weaker
+on wide, fuzzy classification and ordinal scoring unless fine-tuned. It handles text only .
+The contract
+type Question =
+| { type: 'predicate'; name: string; text: string }
+| { type: 'choice'; name: string; text: string; options: string[] }
+| { type: 'score'; name: string; text: string; levels: string[] } //
+ordered low to high
+type Evidence = { text: string; images?: ImageRef[] } // images are optional
+type Answer = {
+name: string
+type: Question['type']
+value: string | boolean | number
+probabilities: { value: string | boolean; p: number }[]
+confidence: number
+}
+interface Decider {
+
+
+PRD: Customs, a Cost-Aware Agent Swarm for Brand Abuse
+id: string // 'openai-decisions' | 'laya-local' | 'jev'
+caps: { images: boolean; maxQuestions: number; maxInputTokens: number }
+price: { usdPerMInput: number } // 0 for local inference
+decide(e: Evidence, qs: Question[], opts?: { timeoutMs: number }):
+Promise<{
+answers: Answer[]
+usage: { inputTokens: number; usd: number; latencyMs: number }
+}>
+}
+Rules that keep them drop-in
+1. Same input, same output. Adapters normalize provider results into Answer, so the
+shortlist, the actors, and the dashboard never depend on which provider answered.
+Each case records the id of the decider that did.
+2. Capabilities, not provider names. The cascade reads caps. For a text-only decider , an
+image is replaced by a short text description (the listing text or OCR) or flagged as
+visual evidence unavailable, which lowers confidence and raises review priority .
+3. Canonical questions. Each adapter maps them to its provider's format. For Laya, a
+predicate becomes a choice between yes and no, a mapping that is unverified.
+4. Metering is adapter-agnostic. usage.usd comes from the adapter's price, which is
+zero for local inference, and latency is recorded either way .
+5. Limits live in the adapter . It truncates evidence to the model's context and splits
+question sets to its question limit.
+6. Calibration is per decider . Thresholds are stored in the Brand actor keyed by decider id
+and never reused across deciders.
+7. F allback chain. A timeout or error f alls through to the next configured decider , and the
+answer carries the id of the decider that produced it.
+Modes, chosen by configuration
+Mode T riage V erify Use
+Laya Laya, text evidence only Local
+test
+T arget OpenAI
+Decisions
+Build and test offline now
+OpenAI Decisions Event demo once access
+arrives
+
+
+PRD: Customs, a Cost-Aware Agent Swarm for Brand Abuse
+Mode T riage V erify Use
+Hybrid Laya OpenAI Decisions Free text triage, with images
+only where they matter
+Shadow One decider
+The other runs on the same
+serves
+input and only logs
+Measure agreement and
+latency on the same
+candidates
+Running Laya. Laya is a Python package ( pip install laya), so it runs as a small local
+sidecar service that the Node harness calls over HTTP on localhost. The sidecar loads the
+model once, makes a warm-up call at start, and caps concurrency . A hands-on write-up
+reports about 1.3 GB of RAM and 1.4 GB of weights, which is unverified on our hardware.
+Feed it short, selected evidence (title, snippet, price, seller , OCR text), not whole pages.
+Contract tests. Run the labeled tape through every adapter with the same question set.
+An adapter is enabled only if its answers are valid, its probabilities sum to about one, and
+its latency stays within bounds. Report its agreement with the labels and with the other
+deciders.
+Requirements for this layer
+Priority Requirement Acceptance check
+P0 P0 P0 P0 A Decider interf ace with canonical
+questions and normalized answers
+A local Laya adapter running through a
+sidecar
+The OpenAI Decisions adapter behind
+the same interf ace
+A f allback chain on error or timeout Changing the configured decider
+changes no code outside its adapter
+A full hunt runs offline on the tape
+using Laya
+Enabled by a configuration change
+once access arrives
+A forced f ailure f alls through to the
+next decider and the dashboard shows
+it
+P1 P1 A per-decider calibration profile in the
+Brand actor
+Shadow mode that logs disagreement Thresholds are keyed by decider id
+The disagreement rate appears in the
+report
+
+
+PRD: Customs, a Cost-Aware Agent Swarm for Brand Abuse
+Priority Requirement Acceptance check
+P1 P2 Contract tests on the labeled tape A Jev adapter , text-only Each adapter passes shape and latency
+checks before use
+The same contract tests pass
+Dashboard and experience
+The dashboard renders only from actor snapshots over websockets, so any viewer sees
+the same live hunt.
+Screen Shows Actions
+Setup Live
+hunt
+Graph Cases Report Brand, keywords, assets, authorized sellers,
+budget, precision-versus-recall setting
+Start, pause
+Counters (seen, triaged, shortlisted, verified,
+approved), cost meter against budget, each
+scout's lane, the steering log with reasons
+Sellers, listings, domains, wallets, and
+channels as nodes, with edges growing as
+leads arrive
+T able with surf ace, scores, confidence, and a
+"why flagged" explanation, plus evidence and
+the drafted notice
+T otals by surf ace, spend, cost per verified
+finding, top clusters, and per-case detail
+Export
+P ause, change budget, boost a
+lane
+Click a node to open its cases
+Approve, reject, re-check
+The user is also a Relay participant, so pause and steer controls send messages through
+the same channel the agents use. The T erse observer UI is shown separately as proof that
+the actors are real. On screen, wallet addresses and account handles are blurred.
+Optional belt skin (P2): the same data drawn as a warehouse conveyor , where candidates
+ride through triage, verification, and approval stations and confirmed counterfeits are
+diverted into a "seized" bin. It changes only the front end.
+
+
+PRD: Customs, a Cost-Aware Agent Swarm for Brand Abuse
+Sponsor integration
+The two prize tracks are T erse Durable Actors and Agent Relay , and each has a visible
+proof moment that f ails without it.
+Role What only it makes
+possible
+Proof on stage T est that it is not
+decorative
+Durable Actors Agent Relay
+Brand memory and graph, Hunt
+budget and roster , one Case per
+candidate
+Race-free dedupe, race-free
+budget, restart with state intact,
+memory across runs
+Five scouts report one URL and
+one case exists, with a
+duplicates-prevented counter .
+The cost bar never passes the
+budget. Kill and restart the
+server and the hunt resumes. A
+second run shows remembered
+lanes
+Removing actors would break
+dedupe and budget under
+concurrency
+Orchestrator , five scouts, and
+the human reviewer as
+participants in one workspace
+Live steering, scout-to-scout
+lead hand-offs, approvals in the
+channel, an outside agent joining
+The orchestrator DMs a steer
+and a scout visibly changes lane.
+A social scout hands a seller to a
+marketplace scout and a graph
+edge appears. A judge's agent
+joins as a scout (stretch)
+Replacing Relay with function
+calls would remove live steering
+and lateral hand-offs
+Division of labor: Relay talks and the actors decide. Messages coordinate, and every
+change of state goes through an actor method.
+Extras, each one line
+OpenAI: Luna for scouts, and the Decisions API for triage and verification once access
+arrives, using the event credits. Until then a local Laya model fills the same slot behind
+one interf ace.
+Mastra: optional approval workflow that pauses until a human decides, and evals.
+Supabase: optional vectors for shortlisting, screenshot storage, and per-brand access
+rules.
+Freestyle: optional sandbox where scouts open scam sites and capture evidence
+safely .
+
+
+PRD: Customs, a Cost-Aware Agent Swarm for Brand Abuse
+Demo plan
+The three-minute demo is a live T esla and Musk hunt that proves each track in turn, with a
+recorded replay ready if live data f ails.
+1. 0:00, set up: enter T esla with a few keywords and a small budget, and start the hunt.
+2. 0:30, the swarm: scouts light up with their lanes while the cost meter and counters
+climb.
+3. 1:00, the race: show the duplicates-prevented counter and the budget bar that never
+passes its limit.
+4. 1:30, steering: the orchestrator redirects a scout, and the reason appears in the
+steering log.
+5. 1:50, the graph: a lead from one scout links a seller to channels and lookalike sites.
+6. 2:15, approval: open a case, show its evidence and why it was flagged, approve the
+drafted notice, and show the simulated submit.
+7. 2:35, restart: kill and restart the server and show the hunt and cases intact.
+8. 2:50, close: show cost per verified finding and the second-run improvement from
+memory .
+Fallback: if the live source returns fewer than a handful of candidates in the first 30
+seconds, switch to the recorded tape. It runs through the same actors, scouts, and
+classifier . The dashboard shows which decider (OpenAI or local Laya) made each call.
+Safety rules
+Open scam pages only in a sandbox, never in the presenter's browser .
+Blur wallet addresses and account handles on screen.
+Label results as candidates flagged for review .
+Never submit a real notice.
+Success metrics
+The main metric is cost per verified finding, and the rest show that the concurrency and
+learning claims are true. T argets are proposals because no baseline exists yet.
+Metric How it is measured Proposed target
+Cost per verified
+finding
+Hunt spend divided by verified
+cases
+Below a naive single-agent hunt
+of the same brand
+
+
+PRD: Customs, a Cost-Aware Agent Swarm for Brand Abuse
+Metric How it is measured Proposed target
+Shortlist precision V erified true cases over
+shortlisted cases, on a human-
+labeled sample
+Reported, with a target set after
+first calibration
+Duplicates
+prevented
+Counter of repeat reports
+collapsed into existing cases
+Shown live
+Budget overshoot Spend minus budget Zero
+Steer-to-effect
+time
+Time from steer message to the
+scout's lane change
+Under 20 seconds
+T riage latency Median and p95 per call, split by
+text and image
+About 500 ms and 1.5 s
+Second-run
+improvement
+Cost or time to first verified
+finding versus the first run
+Visible improvement, measured
+before claiming a number
+Restart recovery Time until the hunt resumes
+after a restart
+Under 30 seconds
+Decider metrics: report each decider's median and p95 latency , its agreement with the
+labeled tape, and the agreement between deciders, side by side.
+Risks and mitigations
+The largest risks are a crowded market, unreliable live data, and the legal and safety care
+that scam content needs.
+Risk Mitigation
+Judges see another brand protection tool Live sources return little, or block requests Lead with the cost-per-finding economics,
+the live swarm, and the durable memory , not
+the category
+Recorded tape through the same pipeline,
+with an automatic switch if live returns too
+few candidates
+
+
+PRD: Customs, a Cost-Aware Agent Swarm for Brand Abuse
+Risk Mitigation
+F alse positives or a wrongful takedown Scam pages host malware Decision-model confidence is poorly
+calibrated
+Latency tails stall scouts Decisions API is in beta and details differ
+between sources
+Both sponsor SDKs are new and may differ
+from docs
+Showing identifiers of real accounts on
+screen
+Human approval on every notice, candidate
+wording, a whitelist, and labels that feed
+back into thresholds. This is not legal advice,
+so involve counsel before any real use
+Open pages only in a sandbox, or classify
+from snippets and thumbnails
+T une thresholds on human labels and the
+tape, and treat raw confidence as a signal,
+not evidence
+Timeouts, parallel calls, small thumbnails,
+and a visible progress display
+Measure early , ask few questions per call,
+and keep Jev or a larger model as a f allback
+Confirm the open questions below in the
+first hour
+Blur handles and wallet addresses, and use
+public data only
+Added risks from the local model: Laya is text-only , has a 512-token context, and is
+weaker on fuzzy or ordinal tasks without fine-tuning. Use it on short selected evidence,
+calibrate it separately , and keep the OpenAI adapter and a larger model as the escalation
+path.
+Open questions
+These are unverified and should be settled in the first hour of the event, because the
+design depends on them.
+Does relay.workspace.stream.set(true) give SDK-registered scouts live messages
+in the way this design assumes?
+How does the SDK deliver messages to custom agents that are not running through a
+harness?
+Can one actor call another , or must the server make every actor call?
+Can actors wake on a timer? The design avoids depending on it.
+
+
+PRD: Customs, a Cost-Aware Agent Swarm for Brand Abuse
+Is the interleaving decorator @Interleave or @Reentrant in the installed Durable
+Actors version?
+What is the real limit on questions per Decisions request, and are HTTP image URLs
+accepted or only base64?
+What do triage calls cost and how long do they take on our real payloads, split by text
+and image?
+Which live sources return enough T esla-related candidates without being blocked?
+Does the event Wi-Fi allow the sandbox and outside agents to connect?
+Confirm the working title Customs, and whether the belt skin is worth the time.
+Confirm Laya's installed API, its question format, and whether its third answer type
+matters for us.
+Does Laya meet the latency target on the event laptop, on CPU and on GPU?
+Does the installed Laya checkpoint have a 512-token or a 1k context?
+When does Decisions API access arrive, and what is the exact request shape for our
+SDK version?
+Sources
+These were taken from search results and research passes in this conversation, mostly in
+October 2026, so treat vendor-reported figures as unverified.
+Durable Actors README and T erse
+Agent Relay: T ypeScript SDK, messaging docs, and the v8 SDK change notes
+OpenAI Decisions API guide, the pricing and latency report, a competitor's latency
+comparison, a router's Luna latency report, and a Decisions versus Jev comparison
+T esla scam patterns: giveaway scam, distribution channels, and a threat research
+report
+Incumbents: Red Points review , Red Points technology post, Doppel, and BrandShield
+Laya: model listing, release overview , speed report, hands-on install guide, and a Laya
+versus Jev comparison

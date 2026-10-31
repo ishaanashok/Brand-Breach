@@ -1,0 +1,9 @@
+node_modules/
+generated/
+.env
+.customs/
+.durable-actors/
+.venv/
+__pycache__/
+*.log
+.DS_Store
