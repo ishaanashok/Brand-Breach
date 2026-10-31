@@ -1,5 +1,5 @@
-import { SURFACES, type Step } from '../types'
-import type { LaneStat } from './brand'
+import { SURFACES, type Step } from '../types.js'
+import type { LaneStat } from './brand.js'
 
 export type PlaybookState = { version: number; priors: Record<string, LaneStat>; hunts: string[] }
 

@@ -67,6 +67,8 @@ export async function createServer(cfg: AppConfig): Promise<App> {
 
   const server = Bun.serve<{ hunt: string }>({
     port: cfg.port,
+    // Joining Relay can outlast the 10s default while a busy workspace is backing off.
+    idleTimeout: 120,
     async fetch(req, srv) {
       const url = new URL(req.url)
       const p = url.pathname
@@ -184,10 +186,16 @@ export async function createServer(cfg: AppConfig): Promise<App> {
         const h = await store.hunt(id).snapshot()
         if (h.status !== 'running' && h.status !== 'paused') continue
         const prior = (await store.brand(slug(h.input!.brand)).snapshot()).hunts
-        const r = new HuntRunner(id, await deps(id, Math.max(prior, 1)))
-        runners.set(id, r)
-        await r.resume()
-        resumed.push(id)
+        // One hunt that cannot rejoin must not keep the others, or the server, down.
+        try {
+          const r = new HuntRunner(id, await deps(id, Math.max(prior, 1)))
+          await r.resume()
+          runners.set(id, r)
+          resumed.push(id)
+        } catch (err) {
+          await store.hunt(id).log(`could not resume: ${err}`, Date.now())
+          console.error(`[customs] could not resume ${id}: ${err}`)
+        }
       }
       return resumed
     },

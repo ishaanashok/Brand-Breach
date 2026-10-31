@@ -137,12 +137,14 @@ test('restart: a new runner resumes the hunt with lanes and cases intact', async
 
 test('second run remembers lanes and reaches a verified finding for less', async () => {
   const store = new MemoryStore()
-  const d1 = await deps(store)
+  // The verifier must outpace scouts here, or spend at first finding only measures timer order.
+  const timing = { scoutDelayMs: 25, tickMs: 5, cooldownMs: 30, verifyMs: 2 }
+  const d1 = await deps(store, { timing })
   const r1 = new HuntRunner('run1', d1)
   await r1.start(input)
   await until(async () => (await store.hunt('run1').snapshot()).status === 'done')
   await r1.stop()
-  const d2 = await deps(store, {}, 2)
+  const d2 = await deps(store, { timing }, 2)
   const r2 = new HuntRunner('run2', d2)
   await r2.start(input)
   await until(async () => (await store.hunt('run2').snapshot()).status === 'done')

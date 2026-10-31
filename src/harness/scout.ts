@@ -33,7 +33,8 @@ export class Scout {
   private get hunt() { return this.d.store.hunt(this.d.huntId) }
   private get brand() { return this.d.store.brand(this.d.brandSlug) }
 
-  async start() {
+  /** Separate from run() so every scout exists on the bus before anyone messages one. */
+  async connect() {
     this.me = await this.d.bus.register(this.name)
     this.unsub = this.d.bus.onMessage(m => {
       if (m.to !== `@${this.name}`) return
@@ -46,8 +47,9 @@ export class Scout {
     })
     this.lane = await this.hunt.registerScout(this.name, this.initialLane, Date.now())
     await this.me.send(HUNT_CHANNEL, `${this.name} online on ${laneKey(this.lane)}`)
-    return this.loop()
   }
+
+  run() { return this.loop() }
 
   stop() { this.stopped = true; this.unsub() }
 
@@ -112,7 +114,7 @@ export class Scout {
     const { first } = await this.d.store.kase(id).report(id, this.d.brandSlug, this.d.huntId, { ...hit, url }, this.name, Date.now())
     if (!first) { await this.hunt.bump('duplicates'); return }
     await this.hunt.addCase(id)
-    await this.me.send(HUNT_CHANNEL, encodeTag('NEW', { caseId: id, url, lane: hit.lane }))
+    await this.me.send(HUNT_CHANNEL, encodeTag('NEW', { caseId: id, url, lane: hit.lane })).catch(() => {})
     if (hit.seller) await this.brand.addEdges([{ from: `listing:${url}`, to: `seller:${hit.seller}`, kind: 'sold_by' }])
 
     const rule = rulesCheck(hit, this.rules)
@@ -155,6 +157,7 @@ export class Scout {
     const target = LEAD_ROUTE[lead.kind]
     await this.brand.addEdges([{ from: `listing:${fromUrl}`, to: `${lead.kind}:${lead.value}`, kind: 'lead' }])
     if (target === this.name) { this.leads.push(lead); return }
-    await this.me.send(`@${target}`, encodeTag('LEAD', lead))
+    // A lost hand-off costs a follow-up search, never the scout.
+    await this.me.send(`@${target}`, encodeTag('LEAD', lead)).catch(err => this.hunt.log(`lead to ${target} failed: ${err}`, Date.now()))
   }
 }

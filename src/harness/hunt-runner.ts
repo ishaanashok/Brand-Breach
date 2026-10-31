@@ -27,6 +27,7 @@ export class HuntRunner {
   private human!: Participant
   private input!: HuntInput
   private brandSlug = ''
+  private launching: Promise<unknown> = Promise.resolve()
 
   constructor(public huntId: string, private d: RunnerDeps) {}
 
@@ -35,7 +36,11 @@ export class HuntRunner {
     await store.playbook().registerHunt(this.huntId)
     await store.hunt(this.huntId).init(this.huntId, input, Date.now(), this.d.triage.id)
     await store.brand(slug(input.brand)).configure(slug(input.brand), input.officialDomains, input.authorizedSellers)
-    await this.launch(input, true)
+    // Joining Relay can take a while under load, so the hunt is visible before it finishes.
+    this.launching = this.launch(input, true).catch(async err => {
+      await store.hunt(this.huntId).log(`could not start: ${err}`, Date.now())
+      await store.hunt(this.huntId).setStatus('done')
+    })
   }
 
   async resume() {
@@ -80,8 +85,9 @@ export class HuntRunner {
     const lanes = await this.initialLanes()
     const common = { huntId: this.huntId, input, brandSlug: this.brandSlug, store, bus, source: this.d.source, triage: this.d.triage, delayMs: this.d.timing.scoutDelayMs }
     this.scouts = SURFACES.map(s => new Scout(s, common, lanes[s]))
+    await Promise.all(this.scouts.map(s => s.connect()))
     for (const s of this.scouts) {
-      this.loops.push(s.start().catch(err => store.hunt(this.huntId).log(`${s.name} crashed: ${err}`, Date.now())))
+      this.loops.push(s.run().catch(err => store.hunt(this.huntId).log(`${s.name} crashed: ${err}`, Date.now())))
     }
     // Scouts take their lane from the Hunt actor, so ASSIGN only announces it. A resume stays silent.
     if (announce) for (const s of SURFACES) await orchestratorMe.send(`@${s}`, encodeTag('ASSIGN', { lane: lanes[s], budgetSliceUsd: input.budgetUsd / SURFACES.length }))
@@ -138,6 +144,7 @@ export class HuntRunner {
   channel = HUNT_CHANNEL
 
   async stop() {
+    await this.launching
     this.stopped = true
     this.scouts.forEach(s => s.stop())
     this.unsub()

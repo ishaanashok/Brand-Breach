@@ -1,4 +1,4 @@
-import type { Step } from '../types'
+import type { Step } from '../types.js'
 
 export type LaneStat = { tries: number; hits: number; costUsd: number }
 export type Edge = { from: string; to: string; kind: string }

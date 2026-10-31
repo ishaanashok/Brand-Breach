@@ -11,6 +11,9 @@ import { MemoryStore } from '../store/memory'
 import type { Store } from '../store/types'
 import { createServer, type DeciderLog } from './api'
 
+// A dropped network promise should leave a trace, not take the running hunts down with it.
+process.on('unhandledRejection', err => console.error('[customs] unhandled rejection:', err))
+
 // Everything is chosen by configuration; see README for the matrix.
 const env = process.env
 const STATE_DIR = '.customs'
@@ -26,8 +29,8 @@ const { triage, verify, mode } = deciderFromConfig(env, {
   onShadow: l => { deciderLog.shadow.push({ agreed: l.agreed }); log(`shadow ${l.primary} vs ${l.shadow}: ${l.agreed ? 'agree' : 'DISAGREE'}`) },
 })
 
-// The key lets a restarted server rejoin the same Relay room, so it stays on local disk.
-const keyFile = (huntId: string) => `${STATE_DIR}/relay-${huntId}.key`
+// Secrets that let a restarted server rejoin the same Relay room; local disk only.
+const stateFile = (huntId: string) => `${STATE_DIR}/relay-${huntId}.json`
 
 const app = await createServer({
   port: Number(env.PORT ?? 3000),
@@ -36,11 +39,11 @@ const app = await createServer({
   timing: DEMO_TIMING,
   makeBus: async huntId => {
     if (env.CUSTOMS_BUS === 'memory') return new MemoryBus()
-    const f = keyFile(huntId)
+    const f = stateFile(huntId)
     return relayBus({
-      workspaceKey: env.RELAY_WORKSPACE_KEY ?? (existsSync(f) ? readFileSync(f, 'utf8').trim() : undefined),
       workspaceName: `customs-${huntId}`,
-      onKey: k => writeFileSync(f, k, { mode: 0o600 }),
+      state: existsSync(f) ? JSON.parse(readFileSync(f, 'utf8')) : { tokens: {} },
+      save: st => writeFileSync(f, JSON.stringify(st), { mode: 0o600 }),
     })
   },
   makeSource: (run, huntId) => {

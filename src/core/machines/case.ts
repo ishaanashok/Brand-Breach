@@ -1,4 +1,4 @@
-import type { Answer, Hit, Step } from '../types'
+import type { Answer, Hit, Step } from '../types.js'
 
 export type CaseStage = 'empty' | 'new' | 'skipped' | 'triaged' | 'undecided' | 'shortlisted' | 'cleared'
   | 'verified' | 'awaiting_approval' | 'approved' | 'rejected'

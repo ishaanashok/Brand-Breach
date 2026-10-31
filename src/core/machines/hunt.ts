@@ -1,4 +1,4 @@
-import type { HuntInput, Lane, Step } from '../types'
+import type { HuntInput, Lane, Step } from '../types.js'
 
 export type ScoutEntry = { lane: Lane; status: string; lastSeen: number; laneChangedAt: number }
 export type Counters = {

@@ -6,10 +6,15 @@ export class MemoryBus implements Bus {
   private n = 0
   log: BusMessage[] = []
 
+  private registered = new Set<string>()
+
   async register(name: string): Promise<Participant> {
+    this.registered.add(name)
     return {
       name,
       send: async (to, text) => {
+        // Real Relay refuses a DM to an agent it does not know yet.
+        if (to.startsWith('@') && !this.registered.has(to.slice(1))) throw new Error(`Agent "${to.slice(1)}" not found`)
         const m = { id: `m${++this.n}`, from: name, to, text }
         this.log.push(m)
         // Delivered on a later tick, like a network.
