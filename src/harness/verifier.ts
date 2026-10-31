@@ -52,7 +52,7 @@ async function verifyOne(d: VerifierDeps, c: CaseState): Promise<boolean> {
   const hit = c.hit!
   const text = [hitText(hit), hit.evidenceText && `Captured evidence: ${hit.evidenceText}`].filter(Boolean).join('\n')
   try {
-    const res = await d.verify.decide({ text }, verifyQuestions(d.input.brand), { timeoutMs: 3000 })
+    const res = await d.verify.decide({ text }, verifyQuestions(d.input.brand), { timeoutMs: 30_000 })
     // Simulated capture cost stands in for the sandbox until one is connected.
     const usd = Math.max(res.usage.usd, d.estUsd)
     await hunt.settle(r.id!, usd)

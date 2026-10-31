@@ -2,7 +2,8 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { deciderFromConfig } from '../deciders/config'
 import { DEMO_TIMING } from '../harness/hunt-runner'
 import { liveSource } from '../harness/live'
-import { autoFallback } from '../harness/source'
+import { nimClient, spiderSource } from '../harness/spiders'
+import { autoFallback, type Source } from '../harness/source'
 import { loadTape, tapeSource } from '../harness/tape'
 import { MemoryBus } from '../relay/memory'
 const relayBus = async (o: Parameters<typeof import("../relay/sdk").relayBus>[0]) => (await import("../relay/sdk")).relayBus(o)
@@ -17,7 +18,7 @@ process.on('unhandledRejection', err => console.error('[customs] unhandled rejec
 
 // Everything is chosen by configuration; see README for the matrix.
 const env = process.env
-const STATE_DIR = '.customs'
+const STATE_DIR = env.CUSTOMS_STATE_DIR ?? '.customs'
 mkdirSync(STATE_DIR, { recursive: true })
 
 const store: Store = env.CUSTOMS_STORE === 'file' ? new MemoryStore(`${STATE_DIR}/actors`) : await actorStore()
@@ -38,15 +39,19 @@ const reasoner = reasonerFromConfig(env, kbFixtures)
 
 const billed = [
   ['target', 'hybrid', 'shadow'].includes(mode) && 'decisions',
-  reasoner.id !== 'mock-reasoner' && 'reasoning',
+  reasoner.id !== 'mock-reasoner' && !reasoner.kbOnly && 'reasoning',
   env.CUSTOMS_SOURCE === 'live' && 'search',
 ].filter((b): b is string => Boolean(b))
 
+const sourceKind = env.CUSTOMS_SOURCE ?? (env.NIM_API_KEY ? 'spiders' : 'tape')
+const SURFACE_LABEL: Record<string, string> = { social: 'Social media', marketplace: 'Marketplaces', video: 'Video sites', domains: 'Websites', channels: 'Group chats' }
+const spiders = new Map<string, Source>()
 const app = await createServer({
   port: Number(env.PORT ?? 3000),
   billed,
+  source: sourceKind,
   store, mode, triage, verify, reasoner, deciderLog,
-  verifyEstUsd: 0.002,
+  verifyEstUsd: sourceKind === 'spiders' ? 0 : 0.002,
   timing: DEMO_TIMING,
   makeBus: async huntId => {
     if (env.CUSTOMS_BUS === 'memory') return new MemoryBus()
@@ -57,7 +62,21 @@ const app = await createServer({
       save: st => writeFileSync(f, JSON.stringify(st), { mode: 0o600 }),
     })
   },
-  makeSource: (run, huntId) => {
+  makeSource: (run, huntId, input) => {
+    if (sourceKind === 'spiders') {
+      if (!env.NIM_API_KEY) throw new Error('CUSTOMS_SOURCE=spiders needs NIM_API_KEY')
+      // One per hunt, however often it's asked for, because it counts what the hunt has used up.
+      let spider = spiders.get(huntId)
+      if (!spider) {
+        spider = spiderSource({
+          nim: nimClient({ apiKey: env.NIM_API_KEY, baseUrl: env.NIM_BASE_URL, model: env.NIM_MODEL }),
+          brand: input.brand, officialDomains: input.officialDomains,
+          onActivity: (surface, text) => { store.hunt(huntId).log(`${SURFACE_LABEL[surface] ?? surface}: ${text}`, Date.now()).catch(() => {}) },
+        })
+        spiders.set(huntId, spider)
+      }
+      return spider
+    }
     const replay = tapeSource(tape, { run, delayMs: 200 })
     if (env.CUSTOMS_SOURCE !== 'live') return replay
     if (!env.OPENAI_API_KEY) throw new Error('CUSTOMS_SOURCE=live needs OPENAI_API_KEY')

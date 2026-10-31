@@ -18,7 +18,9 @@ export type AppConfig = {
   port: number; store: Store; mode: string; verifyEstUsd: number; timing: Timing
   triage: Decider; verify: Decider; reasoner?: Reasoner
   makeBus: (huntId: string) => Promise<Bus>
-  makeSource: (run: number, huntId: string) => Source
+  makeSource: (run: number, huntId: string, input: HuntInput) => Source
+  /** Where results come from: spiders, live or the recorded tape. */
+  source?: string
   feedMs?: number
   /** Fallback and shadow events from the decider layer. */
   deciderLog?: DeciderLog
@@ -46,8 +48,8 @@ export async function createServer(cfg: AppConfig): Promise<App> {
   const runners = new Map<string, HuntRunner>()
   const sockets = new Map<string, Set<ServerWebSocket<{ hunt: string }>>>()
 
-  const deps = async (huntId: string, run: number) => ({
-    store, bus: await cfg.makeBus(huntId), source: cfg.makeSource(run, huntId),
+  const deps = async (huntId: string, run: number, input: HuntInput) => ({
+    store, bus: await cfg.makeBus(huntId), source: cfg.makeSource(run, huntId, input),
     triage: cfg.triage, verify: cfg.verify, verifyEstUsd: cfg.verifyEstUsd, timing: cfg.timing, reasoner: cfg.reasoner,
   })
 
@@ -119,7 +121,7 @@ export async function createServer(cfg: AppConfig): Promise<App> {
 
   async function route(req: Request, p: string): Promise<Response> {
     const body = req.method === 'POST' ? await req.json().catch(() => ({})) : null
-    if (p === '/api/config') return json({ mode: cfg.mode, triage: cfg.triage.id, verify: cfg.verify.id, reasoner: cfg.reasoner?.id ?? null, surfaces: SURFACES, billed: cfg.billed ?? [] })
+    if (p === '/api/config') return json({ mode: cfg.mode, triage: cfg.triage.id, verify: cfg.verify.id, reasoner: cfg.reasoner?.id ?? null, surfaces: SURFACES, billed: cfg.billed ?? [], source: cfg.source ?? 'tape' })
     if (p === '/api/hunts' && req.method === 'GET') {
       const hunts = await store.playbook().listHunts()
       const snaps = await Promise.all(hunts.map(h => store.hunt(h).snapshot()))
@@ -132,7 +134,7 @@ export async function createServer(cfg: AppConfig): Promise<App> {
       if (!input) return json({ error: 'brand and a positive budget are required' }, 400)
       const id = `hunt_${crypto.randomUUID().slice(0, 8)}`
       const prior = (await store.brand(slug(input.brand)).snapshot()).hunts
-      const r = new HuntRunner(id, await deps(id, prior + 1))
+      const r = new HuntRunner(id, await deps(id, prior + 1, input))
       runners.set(id, r)
       await r.start(input)
       return json({ id })
@@ -157,7 +159,7 @@ export async function createServer(cfg: AppConfig): Promise<App> {
     }
 
     if (rest === 'lanes') {
-      const source = cfg.makeSource(1, id)
+      const source = cfg.makeSource(1, id, v.hunt.input!)
       return json({ lanes: Object.fromEntries(SURFACES.map(s => [s, source.lanes(s, v.hunt.input!.keywords).map(l => l.strategy)])) })
     }
 
@@ -178,7 +180,7 @@ export async function createServer(cfg: AppConfig): Promise<App> {
           return json({ ok: true, budgetUsd: await hunt.setBudget(body.usd) })
         case 'boost': {
           const scout = body.scout as Surface
-          const lane = SURFACES.includes(scout) ? cfg.makeSource(1, id).lanes(scout, v.hunt.input!.keywords).find(l => l.strategy === body.strategy) : null
+          const lane = SURFACES.includes(scout) ? cfg.makeSource(1, id, v.hunt.input!).lanes(scout, v.hunt.input!.keywords).find(l => l.strategy === body.strategy) : null
           if (!lane) return json({ error: 'unknown lane' }, 400)
           if (!r) return json({ error: 'This hunt is not running on this server.' }, 409)
           await say(scout, encodeTag('STEER', { lane, reason: 'boosted by the reviewer' }))
@@ -197,7 +199,7 @@ export async function createServer(cfg: AppConfig): Promise<App> {
         return json({ ok: true })
       }
       if (body.decision !== 'approve' && body.decision !== 'reject') return json({ error: 'decision must be approve or reject' }, 400)
-      const r = runners.get(id) ?? new HuntRunner(id, await deps(id, 1))
+      const r = runners.get(id) ?? new HuntRunner(id, await deps(id, 1, v.hunt.input!))
       return json(await r.decide(caseId, body.decision, 'reviewer'))
     }
     return json({ error: 'not found' }, 404)
@@ -250,7 +252,7 @@ export async function createServer(cfg: AppConfig): Promise<App> {
             const h = await store.hunt(id).snapshot()
             if (h.status !== 'running' && h.status !== 'paused') return
             const prior = (await store.brand(slug(h.input!.brand)).snapshot()).hunts
-            r = new HuntRunner(id, await deps(id, Math.max(prior, 1)))
+            r = new HuntRunner(id, await deps(id, Math.max(prior, 1), h.input!))
             await r.resume()
             runners.set(id, r)
             resumed.push(id)

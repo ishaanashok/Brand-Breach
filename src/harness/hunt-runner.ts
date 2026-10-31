@@ -105,7 +105,7 @@ export class HuntRunner {
     if (announce) for (const s of SURFACES) await orchestratorMe.send(`@${s}`, encodeTag('ASSIGN', { lane: lanes[s], budgetSliceUsd: input.budgetUsd / SURFACES.length }))
 
     const orch = createOrchestrator({ huntId: this.huntId, input, brandSlug: this.brandSlug, store, me: orchestratorMe, lanes: this.lanesFor, cooldownMs: this.d.timing.cooldownMs,
-      ...(this.d.reasoner ? { spawnReasoner: (c: CaseState, e: Escalation) => this.spawnReasoner(c, e, orchestratorMe), slots: () => this.freeSlots.length } : {}) })
+      ...(this.d.reasoner && !this.d.reasoner.kbOnly ? { spawnReasoner: (c: CaseState, e: Escalation) => this.spawnReasoner(c, e, orchestratorMe), slots: () => this.freeSlots.length } : {}) })
     this.every(this.d.timing.tickMs, () => orch.tick())
     this.every(this.d.timing.verifyMs, () => orch.escalate())
     this.every(this.d.timing.verifyMs, async () => {

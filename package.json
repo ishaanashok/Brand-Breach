@@ -8,7 +8,8 @@
     "generate": "durable-actors generate",
     "start": "bun src/server/main.ts",
     "test": "bun test",
-    "check": "tsc --noEmit"
+    "check": "tsc --noEmit",
+    "laya": "LAYA_HOST=127.0.0.1 LAYA_MODELS=english sidecar/.venv/bin/laya-serve"
   },
   "dependencies": {
     "@agent-relay/sdk": "14.0.0",

@@ -22,7 +22,8 @@ export function deciderFromConfig(env: Env, hooks: Hooks): { triage: Decider; ve
 
   switch (mode) {
     case 'mock': return { mode, triage: chain(mockDecider()), verify: chain(mockDecider()) }
-    case 'laya': return { mode, triage: chain(laya(), mockDecider()), verify: chain(laya(), mockDecider()) }
+    // Laya alone: if it is down, cases are marked undecided rather than judged by a heuristic.
+    case 'laya': return { mode, triage: chain(laya()), verify: chain(laya()) }
     case 'target': return { mode, triage: chain(openai(), laya()), verify: chain(openai(), laya()) }
     case 'hybrid': return { mode, triage: chain(laya(), openai()), verify: chain(openai(), laya()) }
     case 'shadow': {

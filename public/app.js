@@ -139,7 +139,7 @@ function renderHud(h) {
   const spiders = view.cases.filter(c => ['verified', 'awaiting_approval', 'approved'].includes(c.state)).length
   const state = { running: 'Weaving', paused: 'Paused', done: 'Finished', budget_exhausted: 'Stopped at the limit' }[h.status] ?? h.status
   $('webLine').textContent = `${state}. ${view.cases.length} ${view.cases.length === 1 ? 'site' : 'sites'}, ${spiders} ${spiders === 1 ? 'spider' : 'spiders'}.`
-  $('webSpend').textContent = `${usd(h.spent)} of ${usd(h.input.budgetUsd)} used. ${config.billed.length ? 'Real money.' : 'Simulated.'}`
+  $('webSpend').textContent = `${usd(h.spent)} of ${usd(h.input.budgetUsd)} used. ${costNote()}`
   const finished = h.status === 'done'
   $('pause').hidden = finished
   $('budgetForm').hidden = finished
@@ -318,14 +318,17 @@ $('export').onclick = async () => {
   toast('Report downloaded.')
 }
 
+const costNote = () => (config.billed.length ? 'Real money.' : config.source === 'tape' ? 'Simulated.' : 'No charge counted: NIM credits and local Laya.')
+
 function renderBilling() {
   const real = config.billed.length > 0
-  $('billingNote').hidden = !real
+  $('billingNote').hidden = !real && config.source !== 'tape'
+  if (!real && config.source === 'tape') $('billingNote').innerHTML = '<b>Recorded demo.</b> These results come from a made-up tape, not the web. Set NIM_API_KEY to search for real.'
   $('billingNote').classList.toggle('real', real)
   if (real) $('billingNote').innerHTML = `<b>Real money.</b> ${esc(config.billed.join(', '))} ${config.billed.length === 1 ? 'is' : 'are'} charged by OpenAI to the account of the configured API key. Customs stops at your limit, but set a cap in your OpenAI account too.`
   $('budgetHelp').textContent = real
     ? 'The most this hunt may charge to your OpenAI account.'
-    : 'Demo mode: costs are simulated, no real money.'
+    : config.source === 'tape' ? 'Demo mode: costs are simulated, no real money.' : 'GLM runs on NIM credits and Laya runs here, so nothing is counted against this yet.'
 }
 
 const WHEN = new Intl.DateTimeFormat(undefined, { dateStyle: 'medium', timeStyle: 'short' })

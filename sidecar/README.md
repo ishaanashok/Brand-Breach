@@ -1,6 +1,6 @@
 # Laya sidecar
 
-Local decider, free per call, used for triage in `laya` and `hybrid` modes.
+Local decider, free per call. In `laya` mode it is the only classifier. The model downloads to `~/.cache/huggingface` on first install (about 2.2 GB). `bun run laya` starts it.
 
 ```bash
 uv venv --python 3.12 sidecar/.venv

@@ -6,19 +6,40 @@ Results are candidates flagged for review, not accusations. Notices are drafts, 
 
 Design notes for the knowledge base, graph, steering and reasoners are in [docs/knowledge-graph-and-steering.md](docs/knowledge-graph-and-steering.md). The original plan and its deviations are in [docs/superpowers/plans/2026-10-30-customs.md](docs/superpowers/plans/2026-10-30-customs.md).
 
+## Run a real hunt
+
+Agents are GLM 5.3 Flash on NVIDIA NIM, at low reasoning. They choose their own searches, search the live web (DuckDuckGo, then Bing) and read pages as plain text. [Laya](sidecar/README.md), running on this computer, is the only classifier. GLM never gives a verdict, and a URL only counts if it really came back from the web.
+
+Needs [Bun](https://bun.sh) 1.4, the [Laya sidecar](sidecar/README.md) installed, and `NIM_API_KEY` in `.env`:
+
+```bash
+NIM_API_KEY=nvapi-...
+CUSTOMS_SOURCE=spiders
+REASONER_MODE=glm
+DECIDER_MODE=laya
+```
+
+Start Laya, then the dashboard:
+
+```bash
+bun run laya
+```
+
+```bash
+CUSTOMS_STORE=file CUSTOMS_BUS=memory CUSTOMS_STATE_DIR=.customs/live bun start
+```
+
+Open http://localhost:3000 and name any brand. If Laya is down, cases are marked undecided: nothing else judges them. To use OpenAI's Decisions API once there's a key, set `OPENAI_API_KEY` and `DECIDER_MODE=target`.
+
 ## Run the offline demo
 
-Needs [Bun](https://bun.sh) 1.4. No keys and no other processes.
+For the made-up recorded data, with no keys or network:
 
 ```bash
-bun install
+CUSTOMS_STORE=file CUSTOMS_BUS=memory CUSTOMS_SOURCE=tape DECIDER_MODE=mock REASONER_MODE=mock bun start
 ```
 
-```bash
-CUSTOMS_STORE=file CUSTOMS_BUS=memory DECIDER_MODE=mock REASONER_MODE=mock bun start
-```
-
-Open http://localhost:3000 and start a hunt for `Tesla`. Everything shown comes from the synthetic tapes in `tapes/`, and the dashboard labels mock results as such.
+The dashboard labels this as a recorded demo.
 
 The dashboard has two pages:
 
@@ -53,10 +74,12 @@ With no `CUSTOMS_STORE` or `CUSTOMS_BUS` set, state lives in Durable Actors and 
 | --- | --- | --- | --- |
 | `CUSTOMS_STORE` | `file`, anything else | actors | `file` keeps state in `.customs/actors` |
 | `CUSTOMS_BUS` | `memory`, anything else | Relay | `memory` is an in-process bus |
-| `CUSTOMS_SOURCE` | `live`, anything else | tape | `live` needs `OPENAI_API_KEY` and falls back to the tape if it finds too little |
-| `DECIDER_MODE` | `laya`, `target`, `hybrid`, `shadow`, `mock` | `laya` | Who triages and verifies. `target` uses OpenAI, `hybrid` uses Laya then OpenAI, `shadow` compares both. All but `mock` need the [sidecar](sidecar/README.md) or a fallback to it |
+| `CUSTOMS_SOURCE` | `spiders`, `live`, `tape` | `spiders` with `NIM_API_KEY`, else `tape` | `spiders` is GLM on the real web and never falls back to the tape. `live` is OpenAI web search, which can |
+| `NIM_API_KEY`, `NIM_BASE_URL`, `NIM_MODEL` | | model `z-ai/glm-5.3-flash` | NVIDIA NIM credentials and model |
+| `CUSTOMS_STATE_DIR` | path | `.customs` | Where the file store keeps state |
+| `DECIDER_MODE` | `laya`, `target`, `hybrid`, `shadow`, `mock` | `laya` | Who triages and verifies. `target` uses OpenAI, `hybrid` uses Laya then OpenAI, `shadow` compares both. All but `mock` need the [sidecar](sidecar/README.md) or a fallback to it. `laya` has no fallback |
 | `LAYA_URL` | URL | `http://localhost:8000` | Where the sidecar listens |
-| `REASONER_MODE` | `openai`, `mock` | `openai` with a key, else `mock` | Who builds the knowledge base and verifies escalations |
+| `REASONER_MODE` | `glm`, `openai`, `mock` | `openai` with a key, else `mock` | Who builds the knowledge base and verifies escalations. `glm` only builds the knowledge base, from real search results, and never judges a case |
 | `REASONER_MODEL` | model id | see `src/reasoners/openai.ts` | Reasoning model |
 | `REASONER_USD_PER_M_INPUT`, `REASONER_USD_PER_M_OUTPUT` | number | 1, 4 | **Placeholder prices.** Set real ones before trusting the budget |
 | `OPENAI_API_KEY`, `OPENAI_BASE_URL` | | | OpenAI credentials and endpoint |
@@ -67,6 +90,7 @@ With no `CUSTOMS_STORE` or `CUSTOMS_BUS` set, state lives in Durable Actors and 
 The budget is a spending limit for one hunt, not money you pay into Customs. Before each paid step, an agent reserves its estimated cost on the Hunt actor, which refuses once the limit would be passed. The actual cost replaces the estimate afterwards.
 
 - **Offline demo and `mock` modes:** no money moves. Search costs come from the tape's `searchUsd`, and the mock reasoner charges a pretend amount, so you can see the budget logic at work.
+- **GLM on NIM:** runs on NVIDIA's credits, and nothing is counted against the limit, so the limit doesn't stop these hunts. Each lane runs once and leads are capped at 6 per hunt, which is what ends one.
 - **Real providers:** the money comes from whichever `OPENAI_API_KEY` you configure, billed by OpenAI to that account. That covers `/v1/decisions`, the reasoner and live search. Customs has no billing of its own and never handles a payment.
 - **Not counted:** Laya on your own machine (free per call), and any charges from hosting Durable Actors or Agent Relay.
 
@@ -88,7 +112,7 @@ bun run check
 
 | Check | How | Result |
 | --- | --- | --- |
-| Test suite and types | `bun test`, `tsc` | 104 pass, clean |
+| Test suite and types | `bun test`, `tsc` | 111 pass, clean |
 | Case dedupe and no budget overshoot | `verify-actors.ts` on real actors | 1 first and 4 duplicates, 0 overshoot |
 | Full hunt on real actors and real Relay | Tesla tape, mock deciders, $0.50 budget | Finished at $0.132: 18 verified, 3 own presences skipped, 12 steers, 5 reasoners |
 | `kill -9` of the server mid-hunt | Real stack | Resumes, and triages cases the crash stranded |
@@ -98,10 +122,10 @@ bun run check
 
 ## What has not been verified
 
+- **Classifier accuracy on the real web:** see the hunt in the table above. Laya flagged pages that warn about scams as well as scams, so a human decision still matters.
 - **OpenAI:** no key was available. The Decisions and Responses adapters, the live search source and `gpt-6-luna` have only run against stubs. Real prices and response shapes may differ.
 - **Reasoning quality:** every knowledge base and verdict so far came from `mock-reasoner` and `tapes/kb.json`. The real presences in that file are made up.
 - **Reasoner disagreement in the UI:** the machine and tests cover it, but no browser run produced one.
-- **Decision accuracy:** the Laya triage figure comes from a small synthetic tape and says nothing about real listings.
 
 ## Known limits
 

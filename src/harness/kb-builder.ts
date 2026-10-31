@@ -17,7 +17,7 @@ export async function ensureKb(d: { huntId: string; input: HuntInput; brandSlug:
   const brand = d.store.brand(d.brandSlug)
   const now = Date.now()
   const b = await brand.snapshot()
-  if (b.kb?.builtAt && now - b.kb.builtAt < MAX_AGE_MS) {
+  if (b.kb?.builtAt && b.kb.builtBy === d.reasoner.id && now - b.kb.builtAt < MAX_AGE_MS) {
     await hunt.log(`Knowledge base reused: ${kbEntities(b).length} entities, no cost`, now)
     return
   }

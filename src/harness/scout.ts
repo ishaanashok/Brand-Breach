@@ -13,7 +13,7 @@ import { estimateTokens } from '../deciders/util'
 import type { SearchResult, Source } from './source'
 
 const LEAD_ROUTE: Record<LeadKind, Surface> = { seller: 'marketplace', domain: 'domains', wallet: 'channels', channel: 'channels' }
-const TRIAGE_TIMEOUT_MS = 1500
+const TRIAGE_TIMEOUT_MS = 30_000 // A local model loading or busy with other scouts can take a while.
 // Only repeats twice running means the lane has nothing new, even if it still returns results.
 const DRY_LIMIT = 2
 

@@ -14,6 +14,8 @@ export type Assessment = { verdict: ReasonerVerdict; confidence: number; reasoni
 /** A slow, costly model the orchestrator uses sparingly, where a quick decision cannot settle it. */
 export interface Reasoner {
   id: string
+  /** Only builds the knowledge base. Never called in to judge a case. */
+  kbOnly?: boolean
   /** Upper bounds reserved against the budget before each call. */
   kbEstUsd: number
   assessEstUsd: number

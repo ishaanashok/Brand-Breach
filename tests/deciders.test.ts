@@ -135,7 +135,7 @@ test('contract check passes the mock and rejects bad probabilities', async () =>
 test('config picks modes and never needs code changes', () => {
   expect(deciderFromConfig({ DECIDER_MODE: 'mock' }, {}).triage.id).toBe('fallback(mock-heuristic)')
   const laya = deciderFromConfig({ DECIDER_MODE: 'laya' }, {})
-  expect(laya.triage.id).toBe('fallback(laya-local>mock-heuristic)')
+  expect(laya.triage.id).toBe('fallback(laya-local)')
   const hybrid = deciderFromConfig({ DECIDER_MODE: 'hybrid', OPENAI_API_KEY: 'k' }, {})
   expect(hybrid.triage.id).toContain('laya-local')
   expect(hybrid.verify.id).toContain('openai-decisions')
