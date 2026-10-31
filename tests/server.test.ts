@@ -62,6 +62,8 @@ test('hunt end to end over HTTP and socket, with redaction and versioned snapsho
   expect(after.totals.costPerVerified).toBeGreaterThan(0)
   expect(Object.keys(after.bySurface).length).toBeGreaterThan(1)
   expect(after.perCase.length).toBeGreaterThan(1)
+  expect(after.history.at(-1).id).toBe(id)
+  expect(after.shadow.compared).toBe(0)
 })
 
 test('pause and budget controls', async () => {

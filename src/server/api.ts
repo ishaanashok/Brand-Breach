@@ -14,7 +14,10 @@ export type AppConfig = {
   makeBus: (huntId: string) => Promise<Bus>
   makeSource: (run: number, huntId: string) => Source
   feedMs?: number
+  /** Fallback and shadow events from the decider layer. */
+  deciderLog?: DeciderLog
 }
+export type DeciderLog = { fallbacks: { at: number; from: string; error: string }[]; shadow: { agreed: boolean }[] }
 export type App = { port: number; stop(): void; resumeAll(): Promise<string[]> }
 
 const PUBLIC = new URL('../../public/', import.meta.url).pathname
@@ -57,6 +60,7 @@ export async function createServer(cfg: AppConfig): Promise<App> {
       version: v.hunt.version + v.cases.reduce((a, c) => a + c.version, 0) + v.brand.version,
       hunt: v.hunt, cases: v.cases,
       graph: { edges: v.brand.edges }, lanes: v.brand.laneStats, thresholds: v.brand.thresholds, labels: v.brand.labels.length,
+      fallbacks: cfg.deciderLog?.fallbacks.slice(-20) ?? [],
       priorHunts: v.brand.hunts - 1, disclaimer: 'Candidates flagged for review.',
     }, sensitiveTerms(v.cases, v.brand.edges))
   }
@@ -118,7 +122,16 @@ export async function createServer(cfg: AppConfig): Promise<App> {
     const v = await view(id)
     if (!v) return json({ error: 'unknown hunt' }, 404)
     if (!rest) return json(await publicView(id))
-    if (rest === 'report') return json(redactDeep(buildReport(v.hunt, v.cases), sensitiveTerms(v.cases, v.brand.edges)))
+    if (rest === 'report') {
+      const peers = await Promise.all((await store.playbook().listHunts()).map(h => store.hunt(h).snapshot()))
+      const history = peers
+        .filter(p => p.input && slug(p.input.brand) === slug(v.hunt.input!.brand) && p.startedAt <= v.hunt.startedAt)
+        .sort((a, b) => a.startedAt - b.startedAt)
+        .map(p => ({ id: p.id, spentUsd: p.spent, verified: p.counters.verified, firstVerifiedSpendUsd: p.firstVerifiedSpend, secondsToFirstVerified: p.firstVerifiedAt ? (p.firstVerifiedAt - p.startedAt) / 1000 : null }))
+      const shadow = cfg.deciderLog?.shadow ?? []
+      const disagreementRate = shadow.length ? shadow.filter(s => !s.agreed).length / shadow.length : null
+      return json(redactDeep({ ...buildReport(v.hunt, v.cases), history, shadow: { compared: shadow.length, disagreementRate }, fallbacks: cfg.deciderLog?.fallbacks.length ?? 0, laneStats: v.brand.laneStats }, sensitiveTerms(v.cases, v.brand.edges)))
+    }
 
     const hunt = store.hunt(id)
     if (rest === 'control' && body) {

@@ -36,6 +36,10 @@ test('full tape hunt: drafts notices, steers with reasons, never overspends', as
   expect(Object.keys(h.roster).sort()).toEqual(['channels', 'domains', 'marketplace', 'social', 'video'])
   expect(h.spent).toBeLessThanOrEqual(1)
   expect(h.counters.verified).toBeGreaterThan(3)
+  // The tape has the same page in several lanes, so racing scouts must collide.
+  expect(h.counters.duplicates).toBeGreaterThan(0)
+  const shared = caseId('tesla', 'https://tesla-x2-promo.example')
+  expect((await d.store.kase(shared).snapshot()).reporters.length).toBeGreaterThan(1)
   expect(h.steers.length).toBeGreaterThan(0)
   for (const s of h.steers) expect(s.reason.length).toBeGreaterThan(5)
   const stages = await Promise.all(h.caseIds.map(id => d.store.kase(id).snapshot()))

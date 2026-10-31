@@ -69,6 +69,14 @@
       "price": 12,
       "listPrice": 60,
       "evidenceText": "Knockoff badge set described as genuine. Seller has repeat listings."
+     },
+     {
+      "url": "https://tesla-x2-promo.example/?utm_source=stream",
+      "surface": "marketplace",
+      "title": "Tesla official promo",
+      "snippet": "Official promo: double your crypto in the Tesla giveaway. Send to wallet now.",
+      "truth": true,
+      "evidenceText": "Lookalike landing page copies Tesla styling, shows a countdown and a wallet address for a giveaway."
      }
     ],
     [
@@ -149,6 +157,14 @@
        }
       ],
       "evidenceText": "Airdrop giveaway promising free tokens, asks for wallet connection."
+     },
+     {
+      "url": "https://tesla-x2-promo.example/?utm_source=stream",
+      "surface": "social",
+      "title": "Tesla official promo",
+      "snippet": "Official promo: double your crypto in the Tesla giveaway. Send to wallet now.",
+      "truth": true,
+      "evidenceText": "Lookalike landing page copies Tesla styling, shows a countdown and a wallet address for a giveaway."
      }
     ],
     [
@@ -204,6 +220,14 @@
        }
       ],
       "evidenceText": "Group pins a wallet and repeats double-your-crypto giveaway language."
+     },
+     {
+      "url": "https://tesla-x2-promo.example/?utm_source=stream",
+      "surface": "channels",
+      "title": "Tesla official promo",
+      "snippet": "Official promo: double your crypto in the Tesla giveaway. Send to wallet now.",
+      "truth": true,
+      "evidenceText": "Lookalike landing page copies Tesla styling, shows a countdown and a wallet address for a giveaway."
      }
     ],
     [
@@ -268,6 +292,15 @@
       "snippet": "Replica counterfeit parts at 90% off.",
       "truth": true,
       "evidenceText": "Storefront uses Tesla logo and sells replica parts."
+     },
+     {
+      "url": "https://autonewsdaily.example/how-the-giveaway-scam-works",
+      "surface": "domains",
+      "title": "How the Tesla giveaway scam works",
+      "snippet": "Explainer quoting \"double your crypto\" and \"send to wallet\" so readers can spot the fake giveaway.",
+      "truth": false,
+      "seller": "autonewsdaily",
+      "evidenceText": "Consumer news article warning readers about a fake giveaway, quoting double your crypto wallet language."
      }
     ],
     [
@@ -322,6 +355,14 @@
        }
       ],
       "evidenceText": "Keyframes show a deepfake of the CEO over looping footage. Description links to a giveaway site with a wallet."
+     },
+     {
+      "url": "https://tesla-x2-promo.example/?utm_source=stream",
+      "surface": "video",
+      "title": "Tesla official promo",
+      "snippet": "Official promo: double your crypto in the Tesla giveaway. Send to wallet now.",
+      "truth": true,
+      "evidenceText": "Lookalike landing page copies Tesla styling, shows a countdown and a wallet address for a giveaway."
      }
     ],
     [

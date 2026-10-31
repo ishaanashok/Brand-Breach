@@ -5,11 +5,11 @@ import { liveSource } from '../harness/live'
 import { autoFallback } from '../harness/source'
 import { loadTape, tapeSource } from '../harness/tape'
 import { MemoryBus } from '../relay/memory'
-import { relayBus } from '../relay/sdk'
+const relayBus = async (o: Parameters<typeof import("../relay/sdk").relayBus>[0]) => (await import("../relay/sdk")).relayBus(o)
 import { actorStore } from '../store/actors'
 import { MemoryStore } from '../store/memory'
 import type { Store } from '../store/types'
-import { createServer } from './api'
+import { createServer, type DeciderLog } from './api'
 
 // Everything is chosen by configuration; see README for the matrix.
 const env = process.env
@@ -20,9 +20,10 @@ const store: Store = env.CUSTOMS_STORE === 'file' ? new MemoryStore(`${STATE_DIR
 const tape = await loadTape()
 
 const log = (s: string) => console.log(`[customs] ${s}`)
+const deciderLog: DeciderLog = { fallbacks: [], shadow: [] }
 const { triage, verify, mode } = deciderFromConfig(env, {
-  onFallback: (from, err) => log(`decider ${from} fell through: ${err}`),
-  onShadow: l => log(`shadow ${l.primary} vs ${l.shadow}: ${l.agreed ? 'agree' : 'DISAGREE'}`),
+  onFallback: (from, error) => { deciderLog.fallbacks.push({ at: Date.now(), from, error }); log(`decider ${from} fell through: ${error}`) },
+  onShadow: l => { deciderLog.shadow.push({ agreed: l.agreed }); log(`shadow ${l.primary} vs ${l.shadow}: ${l.agreed ? 'agree' : 'DISAGREE'}`) },
 })
 
 // The key lets a restarted server rejoin the same Relay room, so it stays on local disk.
@@ -30,7 +31,7 @@ const keyFile = (huntId: string) => `${STATE_DIR}/relay-${huntId}.key`
 
 const app = await createServer({
   port: Number(env.PORT ?? 3000),
-  store, mode, triage, verify,
+  store, mode, triage, verify, deciderLog,
   verifyEstUsd: 0.002,
   timing: DEMO_TIMING,
   makeBus: async huntId => {

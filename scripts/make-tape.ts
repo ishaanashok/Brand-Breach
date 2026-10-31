@@ -51,6 +51,14 @@ const lanes: { source: Surface; strategy: string; pages: Hit[][] }[] = [
   ] },
 ]
 
+// The same landing page surfaces in several lanes, so racing scouts really do collide.
+const shared = h('domains', 'tesla-x2-promo.example/?utm_source=stream', 'Tesla official promo', 'Official promo: double your crypto in the Tesla giveaway. Send to wallet now.', true, { evidenceText: 'Lookalike landing page copies Tesla styling, shows a countdown and a wallet address for a giveaway.' })
+for (const l of lanes) {
+  if (['deepfake-streams', 'telegram-groups', 'giveaway-posts', 'discount-parts'].includes(l.strategy)) l.pages[0]!.push({ ...shared, surface: l.source })
+}
+// A news article that quotes scam language: a realistic false positive for the reject flow.
+lanes.find(l => l.strategy === 'lookalike-sites')!.pages[0]!.push(h('domains', 'autonewsdaily.example/how-the-giveaway-scam-works', 'How the Tesla giveaway scam works', 'Explainer quoting "double your crypto" and "send to wallet" so readers can spot the fake giveaway.', false, { seller: 'autonewsdaily', evidenceText: 'Consumer news article warning readers about a fake giveaway, quoting double your crypto wallet language.' }))
+
 const leadResults: Record<string, Hit[]> = {
   'seller:voltking88': [h('marketplace', 'bargainparts.example/tesla-powerwall-replica?batch={run}', 'Powerwall replica', 'Counterfeit Tesla Powerwall casing from same seller.', true, { seller: 'voltking88', price: 300, listPrice: 9000, evidenceText: 'Same seller, counterfeit casing, copied branding.' })],
   'domain:tesla-parts-outlet.example': [h('domains', 'tesla-parts-outlet.example/deals', 'Outlet deals', 'Replica parts deal page with fake certificates.', true, { evidenceText: 'Deal page for replica parts, fake certificates.' })],

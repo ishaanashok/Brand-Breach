@@ -85,6 +85,8 @@ function renderLive(h) {
   }).join('')
   $('steers').innerHTML = [...h.steers].reverse().map(s =>
     `<li><b>${esc(s.scout)}</b>: ${esc(s.from)} → ${esc(s.to)}. <span class="muted">${esc(s.reason)}</span></li>`).join('') || '<li class="muted">No steers yet.</li>'
+  $('fallbacks').innerHTML = [...view.fallbacks].reverse().map(f =>
+    `<li><b>${esc(f.from)}</b> fell through: <span class="muted">${esc(f.error)}</span></li>`).join('') || '<li class="muted">None.</li>'
 }
 
 const stageLabel = s => s.replaceAll('_', ' ')
@@ -174,10 +176,13 @@ async function renderReport() {
       <div class="tile"><b>${t.firstVerifiedSpendUsd === null ? '–' : usd(t.firstVerifiedSpendUsd)}</b><span>Spend to first verified</span></div>
       <div class="tile"><b>${t.duplicates}</b><span>Duplicates prevented</span></div>
     </div>
+    <h2>Across runs for this brand</h2><table><thead><tr><th>Hunt</th><th>Spend</th><th>Verified</th><th>Spend to first verified</th><th>Seconds to first verified</th></tr></thead><tbody>
+    ${r.history.map(h => `<tr><td>${esc(h.id)}</td><td>${usd(h.spentUsd)}</td><td>${h.verified}</td><td>${h.firstVerifiedSpendUsd === null ? '–' : usd(h.firstVerifiedSpendUsd)}</td><td>${h.secondsToFirstVerified === null ? '–' : h.secondsToFirstVerified.toFixed(1)}</td></tr>`).join('')}</tbody></table>
     <h2>By surface</h2><table><thead><tr><th>Surface</th><th>Candidates</th><th>Verified</th><th>Model spend</th></tr></thead><tbody>
     ${Object.entries(r.bySurface).map(([s, v]) => `<tr><td>${esc(s)}</td><td>${v.candidates}</td><td>${v.verified}</td><td>${usd(v.usd)}</td></tr>`).join('')}</tbody></table>
     <h2>Deciders</h2><table><thead><tr><th>Decider</th><th>Calls</th><th>Median ms</th><th>p95 ms</th></tr></thead><tbody>
     ${Object.entries(r.deciders).map(([d, v]) => `<tr><td>${esc(d)}</td><td>${v.calls}</td><td>${num(v.medianMs)}</td><td>${num(v.p95Ms)}</td></tr>`).join('')}</tbody></table>
+    <p class="muted">Fallbacks: ${r.fallbacks}. Shadow comparisons: ${r.shadow.compared}${r.shadow.disagreementRate === null ? '' : `, ${(r.shadow.disagreementRate * 100).toFixed(0)}% disagreement`}.</p>
     <h2>Per case</h2><table><thead><tr><th>Candidate</th><th>State</th><th>Score</th><th>Why</th></tr></thead><tbody>
     ${r.perCase.map(c => `<tr><td class="url">${esc(c.url)}</td><td>${esc(stageLabel(c.state))}</td><td>${c.score === null ? '–' : c.score.toFixed(2)}</td><td>${esc(c.why)}</td></tr>`).join('')}</tbody></table>`
 }
