@@ -12,7 +12,7 @@ The app now runs on the intended stack: Terse's Durable Actors, running locally,
 
 - **Hosting:** actors stay local on this computer. Terse's cloud is out of scope.
 - **Screenshots:** deferred. PR 4 uses each page's own preview image only.
-- **Actors:** one durable actor per brand, holding a persistent knowledge graph of earlier searches, what succeeded and failed, and how pages map across searches. This replaces the 16 shared case actors, and is being built by the coordinating thread.
+- **Actors:** one durable actor per brand, holding a persistent knowledge graph of earlier searches, what succeeded and failed, and how pages map across searches. This replaces the 16 shared case actors, and is being built by the coordinating thread. Built: each brand's actor keeps cases, pages (with every hunt that saw them), links and searches as table rows. See it at `GET /api/brands/:slug/memory`. Hunts stay as their own short-lived actors because they are the hot budget meter. Later hunts don't yet use the search history to choose where to look.
 
 Last real run: New Balance, $0.50 limit, stopped at $0.43, with 542 pages, 76 awaiting review, 4 steers, 2 second opinions, about 20 actor processes and no errors.
 
@@ -145,7 +145,7 @@ PRs 2–7 can run in parallel where they don't touch the same files, except that
 - Replace the table with ranked cards: image, a readable title, URL, risk, confidence, reason, where found, second opinion, and approve and reject buttons. Many cases have the URL as their title, so derive a better title from the fetched page.
 - Capture the image on the server. The fetched HTML's `og:image` is a reasonable first step: `readPage` in `src/harness/web.ts` currently returns text only.
 - **Safety:** download on the server with limits on size and time, accept raster formats only, and serve only the stored copy. Don't send the browser to the remote image. Remember the blur rules for handles.
-- **Storage:** keep image files on disk, such as `.customs/evidence/<caseId>`, with only a reference on the case. Putting image data in a `CaseShard` would make every write to that shard slower.
+- **Storage:** keep image files on disk, such as `.customs/evidence/<caseId>`, with only a reference on the case. Putting image data in the Brand actor's case rows would make every write to that shard slower.
 - Pages without an image need a clear placeholder. Real screenshots are deferred.
 - Optional, once images exist: send them to Decisions through `Evidence.images`. The adapter already supports it. Measure the cost and the benefit before enabling it.
 - Keep it usable at 375px wide, with no page scroll sideways.

@@ -193,22 +193,25 @@ const TRIGGER_LABEL = { undecided: 'Quick check failed', unsure: 'Quick check un
 
 const STATE_LABEL = {
   new: 'Checking', skipped: 'Skipped: looks real', triaged: 'Low risk so far', undecided: "Couldn't decide", shortlisted: 'Being checked',
-  cleared: 'Cleared', verified: 'Confirmed', awaiting_approval: 'Needs your decision', approved: 'Approved', rejected: 'Rejected',
+  cleared: 'Cleared', unreadable: "Couldn't read", verified: 'Confirmed', awaiting_approval: 'Needs your decision', approved: 'Approved', rejected: 'Rejected',
 }
 const stageLabel = s => STATE_LABEL[s] ?? words(s)
 const rank = c => ['awaiting_approval', 'undecided', 'verified', 'shortlisted', 'triaged'].indexOf(c.state)
 const FILTERS = [
   ['review', 'Needs your decision', c => c.state === 'awaiting_approval'],
   ['decided', 'Decided', c => c.state === 'approved' || c.state === 'rejected'],
-  ['other', 'Not flagged', c => !['awaiting_approval', 'approved', 'rejected'].includes(c.state)],
+  ['unreadable', "Couldn't read", c => c.state === 'unreadable'],
+  ['other', 'Not flagged', c => !['awaiting_approval', 'approved', 'rejected', 'unreadable'].includes(c.state)],
   ['all', 'All', () => true],
 ]
+// Nobody read an unreadable page, so any score it has is a guess from its address.
+const decisionOf = c => (c.state === 'unreadable' ? null : c.verification ?? c.triage)
 const risk = d => (d ? `${Math.round(d.score * 100)}%` : '–')
 
 function sortedCases() {
   return [...view.cases].sort((a, b) => {
     const [x, y] = [rank(a), rank(b)].map(r => (r < 0 ? 9 : r))
-    return x - y || (b.triage?.score ?? 0) - (a.triage?.score ?? 0)
+    return x - y || (b.verification ?? b.triage)?.score - (a.verification ?? a.triage)?.score || 0
   })
 }
 
@@ -218,7 +221,7 @@ function renderCases() {
   const pass = FILTERS.find(f => f[0] === caseFilter)[2]
   const rows = sortedCases().filter(pass)
   setHtml($('caseRows'), rows.map(c => {
-    const d = c.verification ?? c.triage
+    const d = decisionOf(c)
     return `<tr class="click ${selected === c.id ? 'sel' : ''}" data-id="${esc(c.id)}" tabindex="0">
       <td class="url">${esc(c.hit?.title)}</td><td>${esc(SURFACE_LABEL[c.hit?.surface] ?? c.hit?.surface)}</td>
       <td>${risk(d)}</td><td class="state-${esc(c.state)}">${esc(stageLabel(c.state))}</td></tr>`
@@ -246,6 +249,8 @@ function reasoningHtml(r) {
     ${r.disagrees ? '<p><b>This contradicts the quick check. Look closely before deciding.</b></p>' : ''}</div>`
 }
 
+const WHY_LABEL = { cleared: 'Why cleared', skipped: 'Why skipped', unreadable: "Why we couldn't read it", undecided: "Why it couldn't be decided" }
+
 function renderDetail() {
   const c = view.cases.find(x => x.id === selected)
   if (!c) {
@@ -254,7 +259,7 @@ function renderDetail() {
     setHtml($('panelBody'), '')
     return
   }
-  const d = c.verification ?? c.triage
+  const d = decisionOf(c)
   const pending = c.state === 'awaiting_approval'
   const html = `<div class="detail">
     <h2>${esc(c.hit?.title)}</h2>
@@ -263,7 +268,7 @@ function renderDetail() {
       <p class="muted small">Approving records a simulated submission. Nothing is sent. Rejecting teaches this brand's future hunts.</p>` : ''}
     <p class="url">${esc(c.hit?.url)} <span class="muted">(don't open this outside a sandbox)</span></p>
     <p>${esc(c.hit?.snippet)}</p>
-    <p><b>Why flagged:</b> ${esc(d?.why ?? c.skipReason ?? 'not classified')}</p>
+    <p><b>${WHY_LABEL[c.state] ?? 'Why flagged'}:</b> ${esc(c.skipReason ?? d?.why ?? 'not classified')}</p>
     ${reasoningHtml(c.reasoning)}
     ${d?.visualEvidenceUnavailable ? '<p class="muted">This model could not check images.</p>' : ''}
     ${c.hit?.evidenceText ? `<p><b>Evidence:</b> ${esc(c.hit.evidenceText)}</p>` : ''}

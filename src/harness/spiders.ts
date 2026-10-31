@@ -1,7 +1,7 @@
 import { canonicalUrl } from '../core/canonical'
 import type { Hit, Lane, Lead, Surface } from '../core/types'
 import type { OnHits, SearchResult, Source } from './source'
-import { readPage, searchDegraded, webSearch, type Page, type SearchItem } from './web'
+import { readPage, readProblem, searchDegraded, webSearch, type Page, type SearchItem } from './web'
 
 export type NimConfig = {
   apiKey: string; baseUrl?: string; model?: string; timeoutMs?: number; retries?: number
@@ -140,6 +140,7 @@ export function webMemory(limit = Infinity) {
   const shown = new Set<string>()
   const read = new Set<string>()
   const reported = new Set<string>()
+  const known = new Set<string>()
   const hostReads = new Map<string, number>()
   let searches = 0
   return {
@@ -149,7 +150,7 @@ export function webMemory(limit = Infinity) {
     /** Pages found before a restart, or by an earlier hunt for this brand, are not new. */
     restore(count: number, urls: string[]) {
       searches = Math.max(searches, count)
-      for (const u of urls) { shown.add(urlKey(u)); reported.add(urlKey(u)) }
+      for (const u of urls) { shown.add(urlKey(u)); reported.add(urlKey(u)); known.add(urlKey(u)) }
     },
     /** Why this search shouldn't run, or null after counting it. */
     claimSearch(query: string): string | null {
@@ -161,10 +162,13 @@ export function webMemory(limit = Infinity) {
       return null
     },
     /** Only what no agent in this hunt has been shown yet. */
-    fresh(items: SearchItem[]) {
+    fresh(items: SearchItem[], onKnown?: (url: string) => void) {
       return items.filter(i => {
         const key = urlKey(i.url)
-        if (shown.has(key)) return false
+        if (shown.has(key)) {
+          if (known.delete(key)) onKnown?.(i.url)
+          return false
+        }
         shown.add(key)
         return true
       })
@@ -196,6 +200,8 @@ export type WebMemory = ReturnType<typeof webMemory>
 type Activity = (text: string) => void
 export type SpiderOpts = {
   nim: Nim; brand: string; officialDomains: string[]; onActivity?: Activity; search?: (query: string) => Promise<SearchItem[]>; read?: typeof readPage
+  /** A search came back with a page an earlier hunt already judged. */
+  onKnownPage?: (url: string) => void
   /** What one search costs, when searches aren't free. */
   searchUsd?: number
   /** Waits while the hunt is paused. */
@@ -251,7 +257,7 @@ export async function runSpider(o: SpiderOpts & { surface: Surface; mission: str
             searches++
             usd += o.searchUsd ?? 0
             o.onSearch?.()
-            const items = memory.fresh(await search(query))
+            const items = memory.fresh(await search(query), o.onKnownPage)
             for (const i of items) seen.set(urlKey(i.url), i)
             if (o.onHits && items.length) {
               for (const i of items) { sent.add(urlKey(i.url)); memory.claimReport(i.url) }
@@ -356,7 +362,7 @@ export function spiderSource(o: Omit<SpiderOpts, 'onActivity'> & { onActivity?: 
       return now() - lastWork >= IDLE_MS ? 'no agent has anywhere new to look' : null
     },
     // A spent lane reports nothing, so the orchestrator moves its scout on and the hunt can end.
-    capture: url => (o.read ?? readPage)(url).then(p => p.text.slice(0, EVIDENCE) || undefined).catch(() => undefined),
+    capture: url => (o.read ?? readPage)(url).then(p => ({ text: p.text.slice(0, EVIDENCE) })).catch(err => ({ problem: readProblem(err) })),
     async search(lane, onHits) {
       if (windingDown()) return { hits: [], usd: 0 }
       const key = `${lane.source}/${lane.strategy}`

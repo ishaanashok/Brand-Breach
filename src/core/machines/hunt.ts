@@ -3,7 +3,7 @@ import type { HuntInput, Lane, Step } from '../types.js'
 export type ScoutEntry = { lane: Lane; status: string; lastSeen: number; laneChangedAt: number }
 export type Counters = {
   seen: number; triaged: number; shortlisted: number; verified: number
-  approved: number; rejected: number; duplicates: number; skipped: number; undecided: number; fallbacks: number; reasoned: number; searches: number
+  approved: number; rejected: number; duplicates: number; skipped: number; undecided: number; fallbacks: number; reasoned: number; searches: number; cleared: number; unreadable: number
 }
 export type SteerKind = 'exhausted' | 'blocked' | 'stalled' | 'yield' | 'cross-surface' | 'manual'
 export type Spawn = { agent: string; caseId: string; trigger: string; reasonerId: string; at: number; endedAt?: number; outcome?: string }
@@ -38,7 +38,7 @@ const MAX_SETTLED = 2000
 export const initialHunt = (): HuntState => ({
   id: '', version: 0, input: null, status: 'new', mode: '', spent: 0, overshootPreventedUsd: 0,
   reservations: {}, settled: [], nextId: 1, roster: {}, caseIds: [], steers: [], spawns: [], events: [],
-  counters: { seen: 0, triaged: 0, shortlisted: 0, verified: 0, approved: 0, rejected: 0, duplicates: 0, skipped: 0, undecided: 0, fallbacks: 0, reasoned: 0, searches: 0 },
+  counters: { seen: 0, triaged: 0, shortlisted: 0, verified: 0, approved: 0, rejected: 0, duplicates: 0, skipped: 0, undecided: 0, fallbacks: 0, reasoned: 0, searches: 0, cleared: 0, unreadable: 0 },
   firstVerifiedAt: null, firstVerifiedSpend: null, startedAt: 0,
 })
 

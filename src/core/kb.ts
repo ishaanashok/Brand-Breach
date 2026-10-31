@@ -23,7 +23,7 @@ export const VERIFY_AT = 0.8
 
 const KINDS: KbKind[] = ['domain', 'account', 'seller', 'channel']
 // Trusting a whole platform would clear every scam hosted on it.
-const SHARED_HOSTS = new Set([
+export const SHARED_HOSTS = new Set([
   'youtube.com', 'youtu.be', 'x.com', 'twitter.com', 'facebook.com', 'instagram.com', 'tiktok.com', 'linkedin.com', 'reddit.com',
   'threads.net', 'pinterest.com', 'twitch.tv', 'discord.com', 'discord.gg', 't.me', 'telegram.org', 'telegram.me', 'whatsapp.com', 'wa.me',
   'amazon.com', 'ebay.com', 'etsy.com', 'aliexpress.com', 'walmart.com', 'temu.com', 'shopify.com', 'myshopify.com', 'wordpress.com', 'wix.com',

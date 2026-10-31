@@ -176,9 +176,9 @@ test('a shortlisted result gets its page fetched before the second check', async
   await store.kase('c').setTriage({ answers: [], deciderId: 'd', usd: 0, latencyMs: 1, score: 0.99, confidence: 0.9, why: 'y' })
   const texts: string[] = []
   const verify = { id: 'v', price: { usdPerMInput: 0 }, decide: async (e: any) => { texts.push(e.text); return { answers: [], deciderId: 'v', usage: { usd: 0, latencyMs: 1 } } } } as any
-  await verifyTick({ huntId: 'h', input, brandSlug: 'acme', store, me: { send: async () => {} } as any, verify, estUsd: 0, capture: async () => 'page words' })
+  await verifyTick({ huntId: 'h', input, brandSlug: 'acme', store, me: { send: async () => {} } as any, verify, estUsd: 0, capture: async () => ({ text: 'page words that are long enough to count as text read from the page itself' }) })
   expect(texts[0]).toContain('page words')
-  expect((await store.kase('c').snapshot()).hit!.evidenceText).toBe('page words')
+  expect((await store.kase('c').snapshot()).hit!.evidenceText).toContain('page words')
 })
 
 test('a burst of decisions waits its turn', async () => {

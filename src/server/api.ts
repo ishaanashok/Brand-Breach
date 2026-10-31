@@ -133,13 +133,13 @@ export async function createServer(cfg: AppConfig): Promise<App> {
       const input = parseInput(body)
       if (!input) return json({ error: 'brand and a positive budget are required' }, 400)
       const id = `hunt_${crypto.randomUUID().slice(0, 8)}`
-      const prior = (await store.brand(slug(input.brand)).snapshot()).hunts
+      const prior = (await store.brand(slug(input.brand)).summary()).hunts
       const r = new HuntRunner(id, await deps(id, prior + 1, input))
       runners.set(id, r)
       await r.start(input)
       return json({ id })
     }
-    const br = p.match(/^\/api\/brands\/([\w-]+)\/(kb|graph)$/)
+    const br = p.match(/^\/api\/brands\/([\w-]+)\/(kb|graph|memory)$/)
     if (br) return brandRoute(req, br[1]!, br[2]!, body)
     const m = p.match(/^\/api\/hunts\/([\w-]+)(?:\/(.+))?$/)
     if (!m) return json({ error: 'not found' }, 404)
@@ -210,6 +210,16 @@ export async function createServer(cfg: AppConfig): Promise<App> {
     const client = store.brand(brandSlug)
     const b = await client.snapshot()
     if (!b.slug) return json({ error: 'unknown brand' }, 404)
+    if (what === 'memory') {
+      const pages = Object.entries(b.seen).map(([url, p]) => ({ url, ...p }))
+      return json(redactDeep({
+        hunts: b.hunts, lanes: b.laneStats, searches: b.searches,
+        pages: pages.length,
+        repeatPages: pages.filter(p => (p.hunts?.length ?? 0) > 1),
+        byState: pages.reduce<Record<string, number>>((n, p) => ({ ...n, [p.state]: (n[p.state] ?? 0) + 1 }), {}),
+        links: b.edges.length,
+      }, termsFor([], b)))
+    }
     if (what === 'kb') {
       if (req.method === 'POST') {
         if (body?.action === 'remove' && typeof body.id === 'string') { await client.removeKbEntity(body.id); return json({ ok: true }) }
@@ -251,7 +261,7 @@ export async function createServer(cfg: AppConfig): Promise<App> {
           try {
             const h = await store.hunt(id).snapshot()
             if (h.status !== 'running' && h.status !== 'paused') return
-            const prior = (await store.brand(slug(h.input!.brand)).snapshot()).hunts
+            const prior = (await store.brand(slug(h.input!.brand)).summary()).hunts
             r = new HuntRunner(id, await deps(id, Math.max(prior, 1), h.input!))
             await r.resume()
             runners.set(id, r)

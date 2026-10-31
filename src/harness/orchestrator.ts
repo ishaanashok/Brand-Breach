@@ -65,7 +65,7 @@ export function createOrchestrator(d: OrchestratorDeps) {
     if (room <= 0) return []
     const [cases, { thresholds }] = await Promise.all([
       d.store.cases(h.caseIds),
-      d.store.brand(d.brandSlug).snapshot(),
+      d.store.brand(d.brandSlug).summary(),
     ])
     const threshold = (c: CaseState) => thresholdFor(thresholds[c.triage?.deciderId ?? ''] ?? DEFAULT_THRESHOLD, d.input.precision)
     return pickEscalations(cases, { slots: Math.min(room, d.slots?.() ?? room), now, threshold })

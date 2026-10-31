@@ -9,9 +9,7 @@ export function caseId(brandSlug: string, url: string): string {
   return `case_${brandSlug}${SEPARATOR}${h.digest('hex').slice(0, 24)}`
 }
 
-/** The actor holding this case: one of 16 per brand. Null for ids made before cases were grouped. */
-export function caseShard(id: string): string | null {
-  const at = id.lastIndexOf(SEPARATOR)
-  if (!id.startsWith('case_') || at < 0) return null
-  return `${id.slice('case_'.length, at)}-${id[at + SEPARATOR.length]}`
+/** The brand whose actor holds this case. */
+export function caseBrand(id: string): string {
+  return id.slice('case_'.length, id.lastIndexOf(SEPARATOR))
 }
