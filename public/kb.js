@@ -217,11 +217,14 @@ const KbIntro = (() => {
 
   function play(root) {
     const sections = RolexKb.GATHER
-    const total = sections.reduce((n, s) => n + s.items.length, 0)
-    root.innerHTML = `<div class="kb-intro-head"><div><h2>Building starter knowledge for Rolex</h2>
+    const phrases = RolexKb.PHRASES
+    // Takes turns between sections, so that all of them fill at the same time and finish together.
+    const steps = sections.flatMap((s, i) => s.items.map((item, n) => ({ i, s, item, turn: (n + 0.5) / s.items.length })))
+      .sort((a, b) => a.turn - b.turn || a.i - b.i)
+    root.innerHTML = `<div class="kb-intro-head"><div><div id="kbIntroPhrase" aria-live="polite"></div>
         <p id="kbIntroLine" class="muted"></p></div><button id="kbIntroSkip" type="button">Skip</button></div>
       <div class="kb-bar"><i id="kbIntroBar"></i></div>
-      <div class="kb-intro-grid">${sections.map((s, i) => `<section class="kb-col" data-col="${i}" hidden><h3>${esc(s.title)}</h3>
+      <div class="kb-intro-grid">${sections.map((s, i) => `<section class="kb-col" data-col="${i}"><h3>${esc(s.title)}</h3>
         ${s.kind === 'watches' ? '<div class="kb-shots"></div>' : '<ul class="kb-rows"></ul>'}</section>`).join('')}</div>`
     root.hidden = false
     return new Promise(resolve => {
@@ -229,22 +232,22 @@ const KbIntro = (() => {
       let done = 0
       const finish = () => { clearTimeout(timer); root.hidden = true; root.innerHTML = ''; resolve() }
       root.querySelector('#kbIntroSkip').onclick = finish
+      const phrase = root.querySelector('#kbIntroPhrase')
+      const say = text => { if (phrase.textContent !== text) phrase.innerHTML = `<h2>${esc(text)}</h2>` }
       const line = root.querySelector('#kbIntroLine')
       const bar = root.querySelector('#kbIntroBar')
-      const steps = sections.flatMap((s, i) => s.items.map(item => ({ i, s, item })))
       const next = () => {
         const step = steps[done]
         if (!step) {
-          line.textContent = `Starter knowledge ready: ${total} references. Sending out the spiders.`
+          say('Starter knowledge ready. Sending out the spiders...')
           timer = setTimeout(finish, END_MS)
           return
         }
-        const col = root.querySelector(`[data-col="${step.i}"]`)
-        col.hidden = false
-        col.querySelector('.kb-rows, .kb-shots').insertAdjacentHTML('beforeend', renderItem(step.s.kind, step.item))
+        say(phrases[Math.floor(done / steps.length * phrases.length)])
+        root.querySelector(`[data-col="${step.i}"]`).querySelector('.kb-rows, .kb-shots').insertAdjacentHTML('beforeend', renderItem(step.s.kind, step.item))
         done++
-        line.textContent = `${step.s.title}: ${done} of ${total} references`
-        bar.style.width = `${done / total * 100}%`
+        line.textContent = `Rolex: ${done} of ${steps.length} references`
+        bar.style.width = `${done / steps.length * 100}%`
         timer = setTimeout(next, ROW_MS)
       }
       next()

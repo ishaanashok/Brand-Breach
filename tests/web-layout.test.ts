@@ -38,9 +38,12 @@ test('one busy surface spreads over the whole web instead of leaving part of it 
 
 test('spiders run from green to red as the risk rises', () => {
   const color = (globalThis as any).WebRiskColor
-  expect(color(0.5)).toBe('hsl(120 85% 55%)')
-  expect(color(0.75)).toBe('hsl(60 85% 55%)')
-  expect(color(1)).toBe('hsl(0 85% 55%)')
+  const hue = (s: number) => Number(color(s).match(/\d+/)[0])
+  expect(hue(0.5)).toBe(125)
+  expect(hue(1)).toBe(0)
+  // Real flagged scores bunch up above 90%, and each point there still has to look different.
+  for (const s of [0.5, 0.6, 0.7, 0.8, 0.9, 0.95, 0.96, 0.97, 0.98, 0.99]) expect(hue(s)).toBeGreaterThan(hue(s + 0.01))
+  expect((globalThis as any).WebPaleRiskColor(1)).toBe('hsl(0 70% 82%)')
 })
 
 test('the Rolex knowledge graph is the same every time and has no loose links', async () => {
