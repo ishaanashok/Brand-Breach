@@ -54,7 +54,7 @@ export async function relayBus(o: { workspaceName: string; state: RelayState; sa
     async register(agentName): Promise<Participant> {
       // Relay refuses a second register for a name, so a restarted server reconnects with the saved token.
       const saved = state.tokens[agentName]
-      const agent = saved
+      const agent: any = saved
         ? await withBackoff(() => relay.workspace.reconnect({ apiToken: saved }))
         : await withBackoff(() => relay.workspace.register({ name: agentName, type: 'agent' }))
       if (agent.token) { state.tokens[agentName] = agent.token; o.save(state) }

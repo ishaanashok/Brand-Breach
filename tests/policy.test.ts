@@ -53,7 +53,7 @@ test('lanes rank by hits per dollar with an exploration bonus', () => {
 })
 
 test('steer picks a better lane, rate limits, and carries a reason', () => {
-  const stats = { 'video/good': { tries: 10, hits: 8, costUsd: 0.1 }, 'video/bad': { tries: 10, hits: 0, costUsd: 0.1 } }
+  const stats = { 'video/good': { tries: 10, hits: 8, costUsd: 0.1 }, 'video/bad': { tries: 10, hits: 2, costUsd: 0.1 } }
   const lanes = [{ source: 'video' as const, strategy: 'good', query: 'q' }, { source: 'video' as const, strategy: 'bad', query: 'q' }]
   const cur = lanes[1]!
   const s = chooseSteer({ current: cur, candidates: lanes, stats, lastSteerAt: 0, now: 30_000, taken: [] })

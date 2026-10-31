@@ -22,6 +22,16 @@
       "snippet": "Third party mats compatible with Tesla Model Y. Review 4.2 stars.",
       "truth": false,
       "seller": "matworks"
+     },
+     {
+      "url": "https://shopnow.example/store/tesla-official/wall-connector",
+      "surface": "marketplace",
+      "title": "Wall Connector",
+      "snippet": "Wall Connector from the brand store at list price.",
+      "truth": false,
+      "seller": "tesla-official-store",
+      "price": 450,
+      "listPrice": 450
      }
     ],
     [
@@ -112,6 +122,13 @@
       "title": "EV news roundup",
       "snippet": "News and review of the latest EV deliveries.",
       "truth": false
+     },
+     {
+      "url": "https://chirp.example/tesla/status/7",
+      "surface": "social",
+      "title": "Tesla: Referral program update",
+      "snippet": "Account post about changes to the referral program.",
+      "truth": false
      }
     ]
    ]
@@ -190,6 +207,13 @@
       "surface": "channels",
       "title": "EV owners community",
       "snippet": "Public forum discussion for owners, repair guide pinned.",
+      "truth": false
+     },
+     {
+      "url": "https://msgr.example/s/tesla-owners-official",
+      "surface": "channels",
+      "title": "Official Tesla owners group",
+      "snippet": "Brand-run group for owner meetups and service notes.",
       "truth": false
      }
     ]

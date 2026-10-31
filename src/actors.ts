@@ -1,7 +1,8 @@
 import { Actor, Persisted } from 'durable-actors'
 import { brand, initialBrand, type BrandState, type Edge, type Label, type LaneStat } from './core/machines/brand.js'
-import { kase, initialCase, type CaseState, type DecisionRecord, type Verification } from './core/machines/case.js'
-import { hunt, initialHunt, type Counters, type HuntState, type HuntStatus, type ReserveResult } from './core/machines/hunt.js'
+import { kase, initialCase, type CaseState, type DecisionRecord, type Reasoning, type Verification } from './core/machines/case.js'
+import { hunt, initialHunt, type Counters, type HuntState, type HuntStatus, type ReserveResult, type Spawn, type SteerKind } from './core/machines/hunt.js'
+import type { KbEntity } from './core/kb.js'
 import { playbook, initialPlaybook, type PlaybookState } from './core/machines/playbook.js'
 import type { Hit, HuntInput, Lane } from './core/types.js'
 
@@ -17,12 +18,14 @@ export class Hunt extends Actor {
   async settle(id: string, actualUsd: number): Promise<{ spent: number }> { return this.#run(hunt.settle(this.s, id, actualUsd)) }
   async registerScout(name: string, lane: Lane, now: number): Promise<Lane> { return this.#run(hunt.registerScout(this.s, name, lane, now)) }
   async setScoutStatus(name: string, status: string, now: number): Promise<null> { return this.#run(hunt.setScoutStatus(this.s, name, status, now)) }
-  async setLane(name: string, lane: Lane, reason: string, now: number): Promise<null> { return this.#run(hunt.setLane(this.s, name, lane, reason, now)) }
+  async setLane(name: string, lane: Lane, reason: string, now: number, kind?: SteerKind): Promise<null> { return this.#run(hunt.setLane(this.s, name, lane, reason, now, kind)) }
   async setStatus(status: HuntStatus): Promise<HuntStatus> { return this.#run(hunt.setStatus(this.s, status)) }
   async setBudget(usd: number): Promise<number> { return this.#run(hunt.setBudget(this.s, usd)) }
   async bump(counter: keyof Counters, by = 1): Promise<number> { return this.#run(hunt.bump(this.s, counter, by)) }
   async markFirstVerified(now: number): Promise<null> { return this.#run(hunt.markFirstVerified(this.s, now)) }
   async addCase(caseId: string): Promise<null> { return this.#run(hunt.addCase(this.s, caseId)) }
+  async recordSpawn(spawn: Spawn): Promise<null> { return this.#run(hunt.recordSpawn(this.s, spawn)) }
+  async finishSpawn(agent: string, caseId: string, outcome: string, now: number): Promise<null> { return this.#run(hunt.finishSpawn(this.s, agent, caseId, outcome, now)) }
   async log(text: string, now: number): Promise<null> { return this.#run(hunt.log(this.s, text, now)) }
   async snapshot(): Promise<HuntState> { return this.s }
 }
@@ -37,6 +40,9 @@ export class Case extends Actor {
   async markUndecided(reason: string): Promise<null> { return this.#run(kase.markUndecided(this.s, reason)) }
   async shortlist(): Promise<boolean> { return this.#run(kase.shortlist(this.s)) }
   async setVerification(r: Verification): Promise<null> { return this.#run(kase.setVerification(this.s, r)) }
+  async claimReasoning(agent: string, trigger: Reasoning['trigger'], now: number, staleMs: number): Promise<boolean> { return this.#run(kase.claimReasoning(this.s, agent, trigger, now, staleMs)) }
+  async failReasoning(error: string): Promise<null> { return this.#run(kase.failReasoning(this.s, error)) }
+  async setReasoning(r: Pick<Reasoning, 'reasonerId' | 'verdict' | 'confidence' | 'reasoning' | 'usd' | 'latencyMs'>): Promise<{ state: CaseState['state']; newlyVerified: boolean }> { return this.#run(kase.setReasoning(this.s, r)) }
   async draftNotice(notice: string): Promise<null> { return this.#run(kase.draftNotice(this.s, notice)) }
   async decide(decision: 'approve' | 'reject', by: string, now: number): Promise<{ changed: boolean; state: CaseState['state'] }> { return this.#run(kase.decide(this.s, decision, by, now)) }
   async recheck(result: string, now: number): Promise<null> { return this.#run(kase.recheck(this.s, result, now)) }
@@ -53,6 +59,9 @@ export class Brand extends Actor {
   async addLabel(l: Label): Promise<boolean> { return this.#run(brand.addLabel(this.s, l)) }
   async markSeen(url: string, r: { score: number; state: string }): Promise<null> { return this.#run(brand.markSeen(this.s, url, r)) }
   async getSeen(url: string): Promise<{ score: number; state: string } | null> { return this.#run(brand.getSeen(this.s, url)) }
+  async setKb(entities: KbEntity[], builtBy: string, now: number): Promise<number> { return this.#run(brand.setKb(this.s, entities, builtBy, now)) }
+  async addKbEntity(e: KbEntity): Promise<null> { return this.#run(brand.addKbEntity(this.s, e)) }
+  async removeKbEntity(id: string): Promise<null> { return this.#run(brand.removeKbEntity(this.s, id)) }
   async getThreshold(deciderId: string): Promise<number> { return this.#run(brand.getThreshold(this.s, deciderId)) }
   async getLaneStats(): Promise<Record<string, LaneStat>> { return this.#run(brand.getLaneStats(this.s)) }
   async snapshot(): Promise<BrandState> { return this.s }

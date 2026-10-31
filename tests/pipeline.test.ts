@@ -1,4 +1,5 @@
-import { expect, test } from 'bun:test'
+import { expect, spyOn, test } from 'bun:test'
+import { mockReasoner } from '../src/reasoners/mock'
 import { mockDecider } from '../src/deciders/mock'
 import { fallbackChain } from '../src/deciders/fallback'
 import { caseId } from '../src/core/canonical'
@@ -185,4 +186,100 @@ test('live source reads citations only and never fetches the cited page', async 
   const r = await s.search({ source: 'domains', strategy: 'lookalike-sites', query: 'tesla' })
   expect(r.hits[0]).toMatchObject({ url: 'https://bad.example/x', surface: 'domains', title: 'Bad' })
   expect(urls).toEqual(['https://api.openai.com/v1/responses'])
+})
+
+const kbFixture = { tesla: [
+  { kind: 'account', value: 'chirp.example/tesla', confidence: 0.96, evidence: 'fixture' },
+  { kind: 'seller', value: 'tesla-official-store', confidence: 0.9, evidence: 'fixture' },
+  { kind: 'channel', value: 'msgr.example/s/tesla-owners-official', confidence: 0.86, evidence: 'fixture' },
+  { kind: 'domain', value: 'teslaforum.example', confidence: 0.55, evidence: 'fixture' },
+] }
+
+test('knowledge base clears the real presences, and later hunts reuse it for free', async () => {
+  const store = new MemoryStore()
+  const reasoner = mockReasoner({ fixtures: kbFixture })
+  const build = spyOn(reasoner, 'buildKb')
+  const d = await deps(store, { reasoner })
+  const r = new HuntRunner('kb1', d)
+  await r.start(input)
+  expect(await until(async () => (await store.hunt('kb1').snapshot()).status === 'done', 8000)).toBe(true)
+  await r.stop()
+  const kase = (url: string) => store.kase(caseId('tesla', url)).snapshot()
+  expect((await kase('https://chirp.example/tesla/status/7')).skipReason).toContain('knowledge base')
+  expect((await kase('https://shopnow.example/store/tesla-official/wall-connector')).skipReason).toContain('knowledge base')
+  // Below the bar, so it is only a candidate and still gets examined.
+  expect((await kase('https://teslaforum.example')).skipReason).toBeNull()
+  const r2 = new HuntRunner('kb2', await deps(store, { reasoner }, 2))
+  await r2.start(input)
+  expect(await until(async () => (await store.hunt('kb2').snapshot()).status === 'done', 8000)).toBe(true)
+  await r2.stop()
+  expect(build).toHaveBeenCalledTimes(1)
+})
+
+test('a failed knowledge base build costs nothing and the hunt carries on', async () => {
+  const reasoner = mockReasoner()
+  reasoner.buildKb = async () => { throw new Error('boom') }
+  const d = await deps(new MemoryStore(), { reasoner })
+  const r = new HuntRunner('kb3', d)
+  await r.start(input)
+  expect(await until(async () => (await d.store.hunt('kb3').snapshot()).status === 'done', 8000)).toBe(true)
+  await r.stop()
+  const h = await d.store.hunt('kb3').snapshot()
+  expect(h.events.some(e => e.text.includes('build failed'))).toBe(true)
+  expect(h.counters.verified).toBeGreaterThan(0)
+})
+
+test('orchestrator spawns reasoners for what decisions could not settle, within budget', async () => {
+  const failing: Decider = { ...mockDecider(), id: 'down', decide: async () => { throw new Error('decisions unavailable') } }
+  const bus = new MemoryBus()
+  const d = await deps(new MemoryStore(), { reasoner: mockReasoner({ fixtures: kbFixture }), verify: failing, bus })
+  const r = new HuntRunner('sp1', d)
+  await r.start({ ...input, budgetUsd: 0.2 })
+  expect(await until(async () => (await d.store.hunt('sp1').snapshot()).status !== 'running', 8000)).toBe(true)
+  await r.stop()
+  const h = await d.store.hunt('sp1').snapshot()
+  expect(h.spawns.length).toBeGreaterThan(0)
+  expect(h.spawns.length).toBeLessThanOrEqual(8)
+  expect(h.spawns.every(s => s.endedAt)).toBe(true)
+  expect(h.spawns.some(s => s.trigger === 'undecided')).toBe(true)
+  expect(h.spent).toBeLessThanOrEqual(0.2)
+  const cases = await Promise.all(h.caseIds.map(id => d.store.kase(id).snapshot()))
+  // A verify outage no longer means nothing reaches a person.
+  expect(cases.some(c => c.state === 'awaiting_approval' && c.reasoning?.verdict === 'infringing')).toBe(true)
+  expect(bus.log.some(m => m.text.startsWith('SPAWN '))).toBe(true)
+  expect(bus.log.some(m => m.text.startsWith('VERDICT '))).toBe(true)
+})
+
+test('a reasoner that throws fails its case without hanging the hunt or keeping the money', async () => {
+  const reasoner = mockReasoner({ usd: 0.01 })
+  reasoner.assess = async () => { throw new Error('model down') }
+  const d = await deps(new MemoryStore(), { reasoner })
+  const r = new HuntRunner('sp2', d)
+  await r.start(input)
+  expect(await until(async () => (await d.store.hunt('sp2').snapshot()).status === 'done', 8000)).toBe(true)
+  await r.stop()
+  const h = await d.store.hunt('sp2').snapshot()
+  expect(h.spawns.some(s => s.outcome === 'failed')).toBe(true)
+  expect(Object.keys(h.reservations)).toEqual([])
+})
+
+test('a lane that only repeats itself stops being searched', async () => {
+  const lane = { source: 'video' as const, strategy: 'same', query: 'q' }
+  let calls = 0
+  const source: Source = {
+    id: 'loop', estUsd: 0.001,
+    search: async l => { if (l.source !== 'video') return { hits: [], usd: 0.001 }; calls++; return { hits: [{ url: 'https://same.example', surface: 'video', title: 't', snippet: 's' }], usd: 0.001 } },
+    followLead: async () => ({ hits: [], usd: 0 }),
+    lanes: s => (s === 'video' ? [lane] : [{ ...lane, source: s, strategy: 'other' }]),
+  }
+  const d = await deps(new MemoryStore(), { source })
+  const r = new HuntRunner('dry', d)
+  r.start(input).catch(() => {})
+  expect(await until(() => calls >= 3, 2000)).toBe(true)
+  await Bun.sleep(100)
+  const seen = calls
+  await Bun.sleep(100)
+  await d.store.hunt('dry').setStatus('done')
+  await r.stop()
+  expect(calls).toBe(seen)
 })

@@ -1,21 +1,29 @@
+import { REASONER_STALE_MS, type Escalation } from '../core/escalate'
 import { rankLanes } from '../core/lanes'
+import type { CaseState } from '../core/machines/case'
 import { DEFAULT_THRESHOLD } from '../core/machines/brand'
 import { thresholdFor } from '../core/policy'
 import { encodeTag, parseTag } from '../core/tags'
 import { SURFACES, laneKey, slug, type Decider, type HuntInput, type Lane, type Surface } from '../core/types'
 import { HUNT_CHANNEL, REVIEW_CHANNEL, type Bus, type Participant } from '../relay/types'
+import type { Reasoner } from '../reasoners/types'
 import type { Store } from '../store/types'
 import { createOrchestrator } from './orchestrator'
+import { ensureKb } from './kb-builder'
+import { runReasoner } from './reasoner-agent'
 import { Scout } from './scout'
 import type { Source } from './source'
 import { verifyTick } from './verifier'
 
 export type Timing = { scoutDelayMs: number; tickMs: number; cooldownMs: number; verifyMs: number }
+const REASONER_SLOTS = ['reasoner-1', 'reasoner-2']
 export const DEMO_TIMING: Timing = { scoutDelayMs: 1500, tickMs: 8000, cooldownMs: 20_000, verifyMs: 2000 }
 
 export type RunnerDeps = {
   store: Store; bus: Bus; source: Source; triage: Decider; verify: Decider
   verifyEstUsd: number; timing: Timing
+  /** Without one the hunt runs on decisions alone, with no knowledge base build or escalation. */
+  reasoner?: Reasoner
 }
 
 /** Hosts one hunt's scouts, orchestrator and verifier. All of it is rebuilt from actors on resume. */
@@ -28,6 +36,9 @@ export class HuntRunner {
   private input!: HuntInput
   private brandSlug = ''
   private launching: Promise<unknown> = Promise.resolve()
+  private freeSlots = [...REASONER_SLOTS]
+  private reasoners = new Set<Promise<unknown>>()
+  private participants = new Map<string, Participant>()
 
   constructor(public huntId: string, private d: RunnerDeps) {}
 
@@ -82,6 +93,9 @@ export class HuntRunner {
       if (p.tag === 'DECISION') this.decide(p.payload.caseId, p.payload.decision, m.from).catch(() => {})
     })
 
+    // Scouts start only once the real sites are known, so none are flagged or paid for.
+    if (this.d.reasoner && announce) await ensureKb({ huntId: this.huntId, input, brandSlug: this.brandSlug, store, reasoner: this.d.reasoner, me: orchestratorMe })
+
     const lanes = await this.initialLanes()
     const common = { huntId: this.huntId, input, brandSlug: this.brandSlug, store, bus, source: this.d.source, triage: this.d.triage, delayMs: this.d.timing.scoutDelayMs }
     this.scouts = SURFACES.map(s => new Scout(s, common, lanes[s]))
@@ -92,15 +106,41 @@ export class HuntRunner {
     // Scouts take their lane from the Hunt actor, so ASSIGN only announces it. A resume stays silent.
     if (announce) for (const s of SURFACES) await orchestratorMe.send(`@${s}`, encodeTag('ASSIGN', { lane: lanes[s], budgetSliceUsd: input.budgetUsd / SURFACES.length }))
 
-    const orch = createOrchestrator({ huntId: this.huntId, input, brandSlug: this.brandSlug, store, me: orchestratorMe, lanes: this.lanesFor, cooldownMs: this.d.timing.cooldownMs })
+    const orch = createOrchestrator({ huntId: this.huntId, input, brandSlug: this.brandSlug, store, me: orchestratorMe, lanes: this.lanesFor, cooldownMs: this.d.timing.cooldownMs,
+      ...(this.d.reasoner ? { spawnReasoner: (c: CaseState, e: Escalation) => this.spawnReasoner(c, e, orchestratorMe), slots: () => this.freeSlots.length } : {}) })
     this.every(this.d.timing.tickMs, () => orch.tick())
+    this.every(this.d.timing.verifyMs, () => orch.escalate())
     this.every(this.d.timing.verifyMs, async () => {
       const n = await verifyTick({ huntId: this.huntId, input, brandSlug: this.brandSlug, store, me: verifierMe, verify: this.d.verify, estUsd: this.d.verifyEstUsd })
-      if (n === 0 && await orch.finished() && !(await this.hasTriaged())) {
+      if (n === 0 && !this.reasoners.size && await orch.finished() && !(await this.hasTriaged()) && !(await orch.escalations()).length) {
         const h = await store.hunt(this.huntId).snapshot()
         if (h.status === 'running') await store.hunt(this.huntId).setStatus('done')
       }
     })
+  }
+
+  /** The orchestrator's call: a short-lived agent with its own place on the bus and its own budget hold. */
+  private async spawnReasoner(c: CaseState, e: Escalation, orchestrator: Participant): Promise<boolean> {
+    const reasoner = this.d.reasoner!
+    const hunt = this.d.store.hunt(this.huntId)
+    const agent = this.freeSlots.shift()
+    if (!agent) return true
+    const release = () => { this.freeSlots.push(agent) }
+    const r = await hunt.reserve(agent, reasoner.assessEstUsd, Date.now())
+    if (!r.ok) { release(); return false }
+    if (!(await this.d.store.kase(c.id).claimReasoning(agent, e.trigger, Date.now(), REASONER_STALE_MS))) {
+      await hunt.settle(r.id!, 0)
+      release()
+      return true
+    }
+    const me = this.participants.get(agent) ?? await this.d.bus.register(agent)
+    this.participants.set(agent, me)
+    await hunt.recordSpawn({ agent, caseId: c.id, trigger: e.trigger, reasonerId: reasoner.id, at: Date.now() })
+    await orchestrator.send(HUNT_CHANNEL, encodeTag('SPAWN', { agent, caseId: c.id, trigger: e.trigger, model: reasoner.id })).catch(() => {})
+    const run = runReasoner({ huntId: this.huntId, input: this.input, brandSlug: this.brandSlug, store: this.d.store, reasoner, me, agent, reservationId: r.id! }, c, e.trigger)
+      .finally(() => { release(); this.reasoners.delete(run) })
+    this.reasoners.add(run)
+    return true
   }
 
   private async hasTriaged() {
@@ -149,6 +189,7 @@ export class HuntRunner {
     this.scouts.forEach(s => s.stop())
     this.unsub()
     await Promise.all(this.loops)
+    await Promise.all(this.reasoners)
     await this.d.bus.close()
   }
 }

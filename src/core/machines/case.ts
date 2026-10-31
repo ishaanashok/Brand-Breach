@@ -16,6 +16,25 @@ export type DecisionRecord = {
 }
 export type Verification = DecisionRecord & { verified: boolean; evidenceRefs?: string[] }
 
+export type ReasonerVerdict = 'infringing' | 'legitimate' | 'unsure'
+export type Reasoning = {
+  status: 'running' | 'done' | 'failed'
+  agent: string
+  trigger: 'undecided' | 'unsure' | 'top'
+  at: number
+  reasonerId?: string
+  verdict?: ReasonerVerdict
+  confidence?: number
+  reasoning?: string
+  usd?: number
+  latencyMs?: number
+  error?: string
+  /** The verdict contradicts the decider, so the person reviewing should see both. */
+  disagrees?: boolean
+}
+
+export const REASONER_ACT_AT = 0.7
+
 export type CaseState = {
   id: string
   version: number
@@ -28,6 +47,7 @@ export type CaseState = {
   verification: Verification | null
   notice: string | null
   approval: { decision: 'approve' | 'reject'; by: string; at: number; simulatedSubmit: boolean } | null
+  reasoning: Reasoning | null
   skipReason: string | null
   recheck: { at: number; result: string } | null
   firstReportedAt: number
@@ -35,7 +55,7 @@ export type CaseState = {
 
 export const initialCase = (): CaseState => ({
   id: '', version: 0, state: 'empty', brand: '', huntId: '', hit: null, reporters: [], triage: null,
-  verification: null, notice: null, approval: null, skipReason: null, recheck: null, firstReportedAt: 0,
+  verification: null, reasoning: null, notice: null, approval: null, skipReason: null, recheck: null, firstReportedAt: 0,
 })
 
 const v = (s: CaseState, patch: Partial<CaseState>): CaseState => ({ ...s, ...patch, version: s.version + 1 })
@@ -63,6 +83,29 @@ export const kase = {
   setVerification(s: CaseState, r: Verification): Step<CaseState, null> {
     if (s.state !== 'shortlisted') return [s, null]
     return [v(s, { verification: r, state: r.verified ? 'verified' : 'cleared' }), null]
+  },
+  /** One reasoner per case. A claim whose agent died goes stale and can be taken over. */
+  claimReasoning(s: CaseState, agent: string, trigger: Reasoning['trigger'], now: number, staleMs: number): Step<CaseState, boolean> {
+    const r = s.reasoning
+    if (r && !(r.status === 'running' && now - r.at > staleMs)) return [s, false]
+    return [v(s, { reasoning: { status: 'running', agent, trigger, at: now } }), true]
+  },
+  failReasoning(s: CaseState, error: string): Step<CaseState, null> {
+    return s.reasoning ? [v(s, { reasoning: { ...s.reasoning, status: 'failed', error } }), null] : [s, null]
+  },
+  /**
+   * A confident verdict can settle a case nobody has decided, or send one to a person.
+   * It can never remove a case already waiting for a person: that shows as a disagreement.
+   */
+  setReasoning(s: CaseState, r: Pick<Reasoning, 'reasonerId' | 'verdict' | 'confidence' | 'reasoning' | 'usd' | 'latencyMs'>): Step<CaseState, { state: CaseStage; newlyVerified: boolean }> {
+    if (!s.reasoning) return [s, { state: s.state, newlyVerified: false }]
+    const sure = (r.confidence ?? 0) >= REASONER_ACT_AT
+    const open = s.state === 'undecided' || s.state === 'triaged'
+    let state = s.state
+    if (sure && r.verdict === 'infringing' && (open || s.state === 'cleared')) state = 'verified'
+    if (sure && r.verdict === 'legitimate' && open) state = 'cleared'
+    const disagrees = sure && ((r.verdict === 'legitimate' && (s.state === 'awaiting_approval' || s.state === 'verified')) || (r.verdict === 'infringing' && s.state === 'cleared'))
+    return [v(s, { state, reasoning: { ...s.reasoning, ...r, status: 'done', disagrees } }), { state, newlyVerified: state === 'verified' && s.state !== 'verified' }]
   },
   draftNotice(s: CaseState, notice: string): Step<CaseState, null> {
     return s.state === 'verified' ? [v(s, { notice, state: 'awaiting_approval' }), null] : [s, null]

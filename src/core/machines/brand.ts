@@ -1,3 +1,4 @@
+import { emptyKb, mergeKb, type BrandKb, type KbEntity } from '../kb.js'
 import type { Step } from '../types.js'
 
 export type LaneStat = { tries: number; hits: number; costUsd: number }
@@ -16,6 +17,7 @@ export type BrandState = {
   laneStats: Record<string, LaneStat>
   thresholds: Record<string, number>
   hunts: number
+  kb: BrandKb
 }
 
 export const DEFAULT_THRESHOLD = 0.5
@@ -23,7 +25,7 @@ const STEP = 0.02
 
 export const initialBrand = (): BrandState => ({
   version: 0, slug: '', officialDomains: [], authorizedSellers: [], whitelist: [], labels: [],
-  seen: {}, edges: [], laneStats: {}, thresholds: {}, hunts: 0,
+  seen: {}, edges: [], laneStats: {}, thresholds: {}, hunts: 0, kb: emptyKb(),
 })
 
 const v = (s: BrandState, patch: Partial<BrandState>): BrandState => ({ ...s, ...patch, version: s.version + 1 })
@@ -71,6 +73,21 @@ export const brand = {
   },
   getLaneStats(s: BrandState): Step<BrandState, Record<string, LaneStat>> {
     return [s, s.laneStats]
+  },
+  /** Records a build. A failed build still stamps it, so the next hunt can decide when to retry. */
+  setKb(s: BrandState, entities: KbEntity[], builtBy: string, now: number): Step<BrandState, number> {
+    const kb = s.kb ?? emptyKb()
+    const merged = mergeKb(kb, entities)
+    return [v(s, { kb: { ...kb, entities: merged, builtBy, builtAt: now } }), merged.length]
+  },
+  addKbEntity(s: BrandState, e: KbEntity): Step<BrandState, null> {
+    const kb = s.kb ?? emptyKb()
+    return [v(s, { kb: { ...kb, entities: mergeKb(kb, [e]), removed: kb.removed.filter(id => id !== e.id) } }), null]
+  },
+  /** A wrong "verified" entry hides real abuse, so a person can always take one back. */
+  removeKbEntity(s: BrandState, id: string): Step<BrandState, null> {
+    const kb = s.kb ?? emptyKb()
+    return [v(s, { kb: { ...kb, entities: kb.entities.filter(e => e.id !== id), removed: [...new Set([...kb.removed, id])] } }), null]
   },
   snapshot(s: BrandState): Step<BrandState, BrandState> {
     return [s, s]

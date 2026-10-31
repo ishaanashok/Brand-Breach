@@ -1,4 +1,4 @@
-export const TAGS = ['ASSIGN', 'STEER', 'NEW', 'LEAD', 'REVIEW', 'DECISION'] as const
+export const TAGS = ['ASSIGN', 'STEER', 'NEW', 'LEAD', 'REVIEW', 'DECISION', 'SPAWN', 'VERDICT', 'KB'] as const
 export type Tag = (typeof TAGS)[number]
 
 export const encodeTag = (tag: Tag, payload: object) => `${tag} ${JSON.stringify(payload)}`

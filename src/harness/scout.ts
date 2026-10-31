@@ -1,4 +1,6 @@
 import { caseId, canonicalUrl } from '../core/canonical'
+import { kbEntities, matchKb } from '../core/kb'
+import type { SteerKind } from '../core/machines/hunt'
 import { hitText, summarize, triageQuestions } from '../core/questions'
 import { rulesCheck, type RuleContext } from '../core/rules'
 import { encodeTag, parseTag } from '../core/tags'
@@ -10,6 +12,8 @@ import type { SearchResult, Source } from './source'
 
 const LEAD_ROUTE: Record<LeadKind, Surface> = { seller: 'marketplace', domain: 'domains', wallet: 'channels', channel: 'channels' }
 const TRIAGE_TIMEOUT_MS = 1500
+// Only repeats twice running means the lane has nothing new, even if it still returns results.
+const DRY_LIMIT = 2
 
 export type ScoutDeps = {
   huntId: string; input: HuntInput; brandSlug: string; store: Store; bus: Bus
@@ -20,7 +24,7 @@ export type ScoutDeps = {
 export class Scout {
   private me!: Participant
   private lane!: Lane
-  private pendingSteer: { lane: Lane; reason: string } | null = null
+  private pendingSteer: { lane: Lane; reason: string; kind: SteerKind } | null = null
   private leads: Lead[] = []
   private stopped = false
   private unsub = () => {}
@@ -40,7 +44,7 @@ export class Scout {
       if (m.to !== `@${this.name}`) return
       const parsed = parseTag(m.text)
       if (parsed?.tag === 'STEER') {
-        this.pendingSteer = { lane: parsed.payload.lane, reason: parsed.payload.reason ?? 'steered' }
+        this.pendingSteer = { lane: parsed.payload.lane, reason: parsed.payload.reason ?? 'steered', kind: parsed.payload.kind ?? 'manual' }
       } else if (parsed?.tag === 'LEAD') {
         this.leads.push(parsed.payload as Lead)
       }
@@ -55,17 +59,19 @@ export class Scout {
 
   private async loop() {
     let exhausted = false
+    let dry = 0
     while (!this.stopped) {
       const s = await this.hunt.snapshot()
       if (s.status === 'done' || s.status === 'budget_exhausted') break
       if (s.status === 'paused') { await Bun.sleep(this.d.delayMs); continue }
 
       if (this.pendingSteer) {
-        const { lane, reason } = this.pendingSteer
+        const { lane, reason, kind } = this.pendingSteer
         this.pendingSteer = null
         this.lane = lane
         exhausted = false
-        await this.hunt.setLane(this.name, lane, reason, Date.now())
+        dry = 0
+        await this.hunt.setLane(this.name, lane, reason, Date.now(), kind)
         await this.hunt.setScoutStatus(this.name, 'online', Date.now())
       }
 
@@ -76,18 +82,19 @@ export class Scout {
         await Bun.sleep(this.d.delayMs)
         continue
       } else {
-        const found = await this.iteration(() => this.d.source.search(this.lane))
-        if (found === 0) {
+        const r = await this.iteration(() => this.d.source.search(this.lane))
+        dry = r && r.found > 0 && r.fresh === 0 ? dry + 1 : 0
+        if (r && (r.failed || r.found === 0 || dry >= DRY_LIMIT)) {
           exhausted = true
-          await this.hunt.setScoutStatus(this.name, `exhausted:${laneKey(this.lane)}`, Date.now())
+          await this.hunt.setScoutStatus(this.name, `${r.failed ? 'blocked' : 'exhausted'}:${laneKey(this.lane)}`, Date.now())
         }
       }
       await Bun.sleep(this.d.delayMs)
     }
   }
 
-  /** Reserve, search, triage, report. Returns hits found, or null if it could not spend. */
-  private async iteration(search: () => Promise<SearchResult>): Promise<number | null> {
+  /** Reserve, search, triage, report. Returns what the search yielded, or null if it could not spend. */
+  private async iteration(search: () => Promise<SearchResult>): Promise<{ found: number; fresh: number; failed?: boolean } | null> {
     const key = laneKey(this.lane)
     const r = await this.hunt.reserve(this.name, this.d.source.estUsd, Date.now())
     if (!r.ok) return null
@@ -98,21 +105,23 @@ export class Scout {
     } catch (err) {
       await this.hunt.settle(r.id!, 0)
       await this.hunt.log(`${this.name} search failed: ${String(err)}`, Date.now())
-      return 0
+      return { found: 0, fresh: 0, failed: true }
     }
     await this.d.store.playbook().update(key, { tries: 1, hits: 0, costUsd: result.usd })
     await this.brand.recordLaneOutcome(key, { tries: 1, hits: 0, costUsd: result.usd })
-    this.rules.whitelist = (await this.brand.snapshot()).whitelist
-    await Promise.all(result.hits.map(h => this.handleHit({ ...h, lane: key })))
-    return result.hits.length
+    const b = await this.brand.snapshot()
+    this.rules.whitelist = b.whitelist
+    this.rules.kb = kbEntities(b)
+    const firsts = await Promise.all(result.hits.map(h => this.handleHit({ ...h, lane: key })))
+    return { found: result.hits.length, fresh: firsts.filter(Boolean).length }
   }
 
-  private async handleHit(hit: Hit) {
+  private async handleHit(hit: Hit): Promise<boolean> {
     const id = caseId(this.d.brandSlug, hit.url)
     const url = canonicalUrl(hit.url)
     await this.hunt.bump('seen')
     const { first } = await this.d.store.kase(id).report(id, this.d.brandSlug, this.d.huntId, { ...hit, url }, this.name, Date.now())
-    if (!first) { await this.hunt.bump('duplicates'); return }
+    if (!first) { await this.hunt.bump('duplicates'); return false }
     await this.hunt.addCase(id)
     await this.me.send(HUNT_CHANNEL, encodeTag('NEW', { caseId: id, url, lane: hit.lane })).catch(() => {})
     if (hit.seller) await this.brand.addEdges([{ from: `listing:${url}`, to: `seller:${hit.seller}`, kind: 'sold_by' }])
@@ -121,10 +130,11 @@ export class Scout {
     if (rule.skip) {
       await this.d.store.kase(id).skip(rule.skip)
       await this.hunt.bump('skipped')
-      return
+      return true
     }
     await this.triage(id, hit, rule.priceFlag)
     for (const lead of hit.leads ?? []) await this.shareLead(lead, url)
+    return true
   }
 
   private async triage(id: string, hit: Hit, priceFlag: boolean) {
@@ -154,6 +164,8 @@ export class Scout {
   }
 
   private async shareLead(lead: Lead, fromUrl: string) {
+    // Chasing what is already known to be real only spends money.
+    if (lead.kind === 'seller' && matchKb({ url: fromUrl, seller: lead.value }, (this.rules.kb ?? []).filter(e => e.kind === 'seller'))) return
     const target = LEAD_ROUTE[lead.kind]
     await this.brand.addEdges([{ from: `listing:${fromUrl}`, to: `${lead.kind}:${lead.value}`, kind: 'lead' }])
     if (target === this.name) { this.leads.push(lead); return }

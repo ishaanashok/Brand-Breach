@@ -1,7 +1,8 @@
 import { canonicalUrl } from './canonical'
+import { matchKb, type KbEntity } from './kb'
 import type { Hit } from './types'
 
-export type RuleContext = { officialDomains: string[]; authorizedSellers: string[]; whitelist: string[] }
+export type RuleContext = { officialDomains: string[]; authorizedSellers: string[]; whitelist: string[]; kb?: KbEntity[] }
 const STEEP_DISCOUNT = 0.5
 
 const hostOf = (url: string) => {
@@ -19,5 +20,9 @@ export function rulesCheck(hit: Hit, ctx: RuleContext): { skip: string | null; p
   if (ctx.officialDomains.some(d => isSubdomain(host, d.toLowerCase()))) skip = 'official domain'
   else if (has(ctx.authorizedSellers)) skip = 'authorized seller'
   else if (has(ctx.whitelist)) skip = 'whitelisted seller'
+  else {
+    const known = matchKb(hit, ctx.kb ?? [])
+    if (known) skip = `verified ${known.kind} in knowledge base: ${known.value}`
+  }
   return { skip, priceFlag }
 }

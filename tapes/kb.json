@@ -1,0 +1,53 @@
+{
+ "note": "SYNTHETIC stand-in for web research. Used only by the mock reasoner.",
+ "tesla": [
+  {
+   "kind": "domain",
+   "value": "tesla.com",
+   "confidence": 0.99,
+   "evidence": "Synthetic: the brand site"
+  },
+  {
+   "kind": "domain",
+   "value": "shop.tesla.com",
+   "confidence": 0.97,
+   "evidence": "Synthetic: linked from the brand site"
+  },
+  {
+   "kind": "account",
+   "value": "chirp.example/tesla",
+   "confidence": 0.96,
+   "evidence": "Synthetic: linked from the brand site"
+  },
+  {
+   "kind": "account",
+   "value": "streamtube.example/teslaofficial",
+   "confidence": 0.93,
+   "evidence": "Synthetic: linked from the brand site"
+  },
+  {
+   "kind": "channel",
+   "value": "msgr.example/s/tesla-owners-official",
+   "confidence": 0.86,
+   "evidence": "Synthetic: named in brand community page"
+  },
+  {
+   "kind": "seller",
+   "value": "tesla-official-store",
+   "confidence": 0.9,
+   "evidence": "Synthetic: brand store on the marketplace"
+  },
+  {
+   "kind": "domain",
+   "value": "teslaforum.example",
+   "confidence": 0.55,
+   "evidence": "Synthetic: long-running fan forum, ownership unclear"
+  },
+  {
+   "kind": "domain",
+   "value": "chirp.example",
+   "confidence": 0.2,
+   "evidence": "Synthetic: a model mistake the bar should stop"
+  }
+ ]
+}

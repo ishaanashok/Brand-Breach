@@ -51,6 +51,12 @@ const lanes: { source: Surface; strategy: string; pages: Hit[][] }[] = [
   ] },
 ]
 
+// The brand's own presences turn up in searches too. The knowledge base should clear these for free.
+const own = (strategy: string, hit: Hit) => lanes.find(l => l.strategy === strategy)!.pages[0]!.push(hit)
+own('promo-accounts', h('social', 'chirp.example/tesla/status/7', 'Tesla: Referral program update', 'Account post about changes to the referral program.', false))
+own('accessories', h('marketplace', 'shopnow.example/store/tesla-official/wall-connector', 'Wall Connector', 'Wall Connector from the brand store at list price.', false, { seller: 'tesla-official-store', price: 450, listPrice: 450 }))
+own('discord-invites', h('channels', 'msgr.example/s/tesla-owners-official', 'Official Tesla owners group', 'Brand-run group for owner meetups and service notes.', false))
+
 // The same landing page surfaces in several lanes, so racing scouts really do collide.
 const shared = h('domains', 'tesla-x2-promo.example/?utm_source=stream', 'Tesla official promo', 'Official promo: double your crypto in the Tesla giveaway. Send to wallet now.', true, { evidenceText: 'Lookalike landing page copies Tesla styling, shows a countdown and a wallet address for a giveaway.' })
 for (const l of lanes) {
@@ -69,3 +75,16 @@ const leadResults: Record<string, Hit[]> = {
 
 const tape = { note: 'SYNTHETIC demo data. All domains are reserved .example names; all sellers and wallets are invented.', searchUsd: 0.002, lanes, leadResults }
 await Bun.write(new URL('../tapes/tesla.json', import.meta.url).pathname, JSON.stringify(tape, null, 1))
+
+// What a reasoning model would plausibly return for this brand, for offline runs. Also synthetic.
+const kb = { note: 'SYNTHETIC stand-in for web research. Used only by the mock reasoner.', tesla: [
+  { kind: 'domain', value: 'tesla.com', confidence: 0.99, evidence: 'Synthetic: the brand site' },
+  { kind: 'domain', value: 'shop.tesla.com', confidence: 0.97, evidence: 'Synthetic: linked from the brand site' },
+  { kind: 'account', value: 'chirp.example/tesla', confidence: 0.96, evidence: 'Synthetic: linked from the brand site' },
+  { kind: 'account', value: 'streamtube.example/teslaofficial', confidence: 0.93, evidence: 'Synthetic: linked from the brand site' },
+  { kind: 'channel', value: 'msgr.example/s/tesla-owners-official', confidence: 0.86, evidence: 'Synthetic: named in brand community page' },
+  { kind: 'seller', value: 'tesla-official-store', confidence: 0.9, evidence: 'Synthetic: brand store on the marketplace' },
+  { kind: 'domain', value: 'teslaforum.example', confidence: 0.55, evidence: 'Synthetic: long-running fan forum, ownership unclear' },
+  { kind: 'domain', value: 'chirp.example', confidence: 0.2, evidence: 'Synthetic: a model mistake the bar should stop' },
+] }
+await Bun.write(new URL('../tapes/kb.json', import.meta.url).pathname, JSON.stringify(kb, null, 1))

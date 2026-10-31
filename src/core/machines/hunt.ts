@@ -3,8 +3,10 @@ import type { HuntInput, Lane, Step } from '../types.js'
 export type ScoutEntry = { lane: Lane; status: string; lastSeen: number; laneChangedAt: number }
 export type Counters = {
   seen: number; triaged: number; shortlisted: number; verified: number
-  approved: number; rejected: number; duplicates: number; skipped: number; undecided: number; fallbacks: number
+  approved: number; rejected: number; duplicates: number; skipped: number; undecided: number; fallbacks: number; reasoned: number
 }
+export type SteerKind = 'exhausted' | 'blocked' | 'stalled' | 'yield' | 'cross-surface' | 'manual'
+export type Spawn = { agent: string; caseId: string; trigger: string; reasonerId: string; at: number; endedAt?: number; outcome?: string }
 export type HuntStatus = 'new' | 'running' | 'paused' | 'budget_exhausted' | 'done'
 
 export type HuntState = {
@@ -21,7 +23,8 @@ export type HuntState = {
   roster: Record<string, ScoutEntry>
   counters: Counters
   caseIds: string[]
-  steers: { at: number; scout: string; from: string; to: string; reason: string }[]
+  steers: { at: number; scout: string; from: string; to: string; reason: string; kind: SteerKind }[]
+  spawns: Spawn[]
   events: { at: number; text: string }[]
   firstVerifiedAt: number | null
   firstVerifiedSpend: number | null
@@ -34,8 +37,8 @@ const MAX_SETTLED = 2000
 
 export const initialHunt = (): HuntState => ({
   id: '', version: 0, input: null, status: 'new', mode: '', spent: 0, overshootPreventedUsd: 0,
-  reservations: {}, settled: [], nextId: 1, roster: {}, caseIds: [], steers: [], events: [],
-  counters: { seen: 0, triaged: 0, shortlisted: 0, verified: 0, approved: 0, rejected: 0, duplicates: 0, skipped: 0, undecided: 0, fallbacks: 0 },
+  reservations: {}, settled: [], nextId: 1, roster: {}, caseIds: [], steers: [], spawns: [], events: [],
+  counters: { seen: 0, triaged: 0, shortlisted: 0, verified: 0, approved: 0, rejected: 0, duplicates: 0, skipped: 0, undecided: 0, fallbacks: 0, reasoned: 0 },
   firstVerifiedAt: null, firstVerifiedSpend: null, startedAt: 0,
 })
 
@@ -101,13 +104,13 @@ export const hunt = {
     return [v(s, { roster: { ...s.roster, [name]: { ...prev, status, lastSeen: now } } }), null]
   },
 
-  setLane(s: HuntState, name: string, lane: Lane, reason: string, now: number): Step<HuntState, null> {
+  setLane(s: HuntState, name: string, lane: Lane, reason: string, now: number, kind: SteerKind = 'manual'): Step<HuntState, null> {
     const prev = s.roster[name]
     if (!prev) return [s, null]
     const fmt = (l: Lane) => `${l.source}/${l.strategy}`
     return [v(s, {
       roster: { ...s.roster, [name]: { ...prev, lane, laneChangedAt: now } },
-      steers: [...s.steers, { at: now, scout: name, from: fmt(prev.lane), to: fmt(lane), reason }].slice(-100),
+      steers: [...s.steers, { at: now, scout: name, from: fmt(prev.lane), to: fmt(lane), reason, kind }].slice(-100),
     }), null]
   },
 
@@ -123,7 +126,7 @@ export const hunt = {
   },
 
   bump(s: HuntState, counter: keyof Counters, by = 1): Step<HuntState, number> {
-    const n = s.counters[counter] + by
+    const n = (s.counters[counter] ?? 0) + by
     return [v(s, { counters: { ...s.counters, [counter]: n } }), n]
   },
 
@@ -135,6 +138,15 @@ export const hunt = {
   addCase(s: HuntState, caseId: string): Step<HuntState, null> {
     if (s.caseIds.includes(caseId)) return [s, null]
     return [v(s, { caseIds: [...s.caseIds, caseId] }), null]
+  },
+
+  recordSpawn(s: HuntState, spawn: Spawn): Step<HuntState, null> {
+    return [v(s, { spawns: [...(s.spawns ?? []), spawn].slice(-100) }), null]
+  },
+
+  finishSpawn(s: HuntState, agent: string, caseId: string, outcome: string, now: number): Step<HuntState, null> {
+    const spawns = (s.spawns ?? []).map(x => (x.agent === agent && x.caseId === caseId && !x.endedAt ? { ...x, endedAt: now, outcome } : x))
+    return [v(s, { spawns }), null]
   },
 
   log(s: HuntState, text: string, now: number): Step<HuntState, null> {
