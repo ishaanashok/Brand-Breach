@@ -13,6 +13,7 @@
   <nav id="tabs">
     <button data-tab="setup" class="on">New hunt</button>
     <button data-tab="cases">Review <span id="reviewCount" class="count" hidden></span></button>
+    <button data-tab="kb">Knowledge base</button>
   </nav>
   <span id="status" class="status">No hunt open</span>
 </header>
@@ -103,9 +104,27 @@
       <div id="caseDetail" class="review-detail"></div>
     </div>
   </section>
+
+  <section id="kb" hidden>
+    <div class="stage">
+      <canvas id="kbCanvas" role="img" aria-label="A map of everything known about Rolex: official sources, models, visual marks and abuse patterns."></canvas>
+      <div class="zoom" role="group" aria-label="Zoom the map">
+        <button id="kbZoomIn" type="button" aria-label="Zoom in" title="Zoom in">+</button>
+        <button id="kbZoomOut" type="button" aria-label="Zoom out" title="Zoom out">−</button>
+        <button id="kbZoomFit" type="button" title="Fit the whole map">Fit</button>
+      </div>
+      <div id="kbInfo" class="kb-info"></div>
+      <ul class="kb-legend">
+        <li style="--c:#d9b44a">Official</li><li style="--c:#5b9dff">Visual reference</li><li style="--c:#e5534b">Abuse signal</li><li style="--c:#1fbf6b">Hashtag</li><li style="--c:#b5b5b5">Fact</li>
+      </ul>
+    </div>
+  </section>
 </main>
+<div id="kbIntro" class="kb-intro" hidden></div>
 <div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
 <script src="web.js"></script>
+<script src="kb-data.js"></script>
+<script src="kb.js"></script>
 <script src="app.js"></script>
 </body>
 </html>

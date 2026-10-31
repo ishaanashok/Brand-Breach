@@ -42,3 +42,14 @@ test('spiders run from green to red as the risk rises', () => {
   expect(color(0.75)).toBe('hsl(60 85% 55%)')
   expect(color(1)).toBe('hsl(0 85% 55%)')
 })
+
+test('the Rolex knowledge graph is the same every time and has no loose links', async () => {
+  await import('../public/kb-data.js' as string)
+  const { buildGraph, LINKS } = (globalThis as any).RolexKb
+  const a = buildGraph()
+  expect(buildGraph()).toEqual(a)
+  const ids = new Set(a.nodes.map((n: any) => n.id))
+  expect(ids.size).toBe(a.nodes.length)
+  expect(LINKS.filter(([x, y]: string[]) => !ids.has(x) || !ids.has(y))).toEqual([])
+  expect(a.nodes.length).toBeGreaterThan(150)
+})
