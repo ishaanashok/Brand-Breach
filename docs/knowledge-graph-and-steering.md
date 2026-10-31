@@ -11,7 +11,7 @@ A reasoning model proposes entries with evidence (`src/harness/kb-builder.ts`). 
 | Source | Becomes verified when |
 | --- | --- |
 | Operator, from the setup form | Always |
-| Human, from the Knowledge base tab | Always |
+| Human, through the `kb` API route | Always |
 | Reasoner | Confidence is at least 0.8 (`VERIFY_AT`) |
 
 Everything else stays a `candidate`, which is only a hint and clears nothing. Shared platforms (`SHARED_HOSTS`) and bare-host accounts are refused, so a model can't whitelist a whole marketplace by naming it.
@@ -38,7 +38,7 @@ GET /api/brands/:slug/kb
 
 `POST` on the `kb` route adds or removes an entry: `{ "action": "add", "kind", "value" }` or `{ "action": "remove", "id" }`. Shared platforms get a 400.
 
-The dashboard's `public/graph.js` draws it with a hand-written force layout on canvas, so it needs no library. It settles 220 ticks before first paint so the demo doesn't open on a tangle.
+The dashboard no longer draws this graph. It shows the hunt as a woven web instead (`public/web.js`), and the graph stays available through the API above.
 
 ## Steering
 
@@ -53,7 +53,7 @@ The orchestrator (`src/harness/orchestrator.ts`) reviews each scout on a timer. 
 | `cross-surface` | This surface is spent, so the scout moves to one with lanes left |
 | `manual` | A human boosted a lane |
 
-The kind and reason are stored on the Hunt actor and shown in the steering timeline. Lane results also feed the Brand and Playbook actors, so a later hunt starts on what worked.
+The kind and reason are stored on the Hunt actor and returned by the hunt API. Lane results also feed the Brand and Playbook actors, so a later hunt starts on what worked.
 
 ## Reasoners
 

@@ -20,13 +20,14 @@ CUSTOMS_STORE=file CUSTOMS_BUS=memory DECIDER_MODE=mock REASONER_MODE=mock bun s
 
 Open http://localhost:3000 and start a hunt for `Tesla`. Everything shown comes from the synthetic tapes in `tapes/`, and the dashboard labels mock results as such.
 
-The tabs:
+The dashboard has two pages:
 
-- **Live hunt:** scouts, budget, the steering timeline with the reason for each switch, reasoner spawns, events.
-- **Graph:** the brand's verified presences, findings and agents. Turn each layer on or off, click a node for its evidence.
-- **Knowledge base:** what counts as real for this brand, where each entry came from, and manual add or remove.
-- **Cases:** the review queue, with the reasoner's verdict and evidence. Approve or reject here.
-- **Report:** spend per finding, run history, decider disagreements, fallbacks.
+- **New hunt:** name a brand and press Start hunt. Search terms, the brand's own sites, sellers and the spending limit are under Options. Earlier hunts are listed below.
+- **Review:** every candidate in a list with filters, its evidence, and approve or reject.
+
+Starting a hunt opens the web. Agents spin silk outwards from the brand at the centre, with a point at each junction. A listing they find sits on a larger point in that agent's part of the web, and a spider stays behind on each one flagged as an infringement. Press a spider for the same details and decisions as Review. Only those larger points are data: the rest of the silk is how the search looks, and doesn't count sites.
+
+Pause, the spending limit and the report download are on the web page. The graph, knowledge base and steering are still available through the API, but the dashboard no longer shows them.
 
 ## Run on the real stack
 
@@ -87,13 +88,13 @@ bun run check
 
 | Check | How | Result |
 | --- | --- | --- |
-| Test suite and types | `bun test`, `tsc` | 97 pass, clean |
+| Test suite and types | `bun test`, `tsc` | 104 pass, clean |
 | Case dedupe and no budget overshoot | `verify-actors.ts` on real actors | 1 first and 4 duplicates, 0 overshoot |
 | Full hunt on real actors and real Relay | Tesla tape, mock deciders, $0.50 budget | Finished at $0.132: 18 verified, 3 own presences skipped, 12 steers, 5 reasoners |
 | `kill -9` of the server mid-hunt | Real stack | Resumes, and triages cases the crash stranded |
 | `kill -9` of the actor runtime mid-hunt | Real stack | State kept, scouts restart, hunt finishes |
 | Laya wire format | Sidecar 0.4.18 against the tape | Median 61ms, p95 473ms, triage 25/27 on synthetic data |
-| Dashboard | Browser, offline demo | Graph, KB, cases, approve, reject, repeat decision refused, 375px width without page scroll |
+| Dashboard | Browser, offline demo | Search, weaving, spider details, approve, reject, finished hunt reopened, Review, 375px width without page scroll |
 
 ## What has not been verified
 

@@ -3,6 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="dark">
 <title>Customs</title>
 <link rel="stylesheet" href="style.css">
 </head>
@@ -11,127 +12,79 @@
   <h1>Customs</h1>
   <nav id="tabs">
     <button data-tab="setup" class="on">New hunt</button>
-    <button data-tab="live">Live hunt</button>
     <button data-tab="cases">Review <span id="reviewCount" class="count" hidden></span></button>
-    <button data-tab="graph">Graph</button>
-    <button data-tab="kb">Real sites</button>
-    <button data-tab="report">Report</button>
   </nav>
-  <span id="status" class="pill">No hunt open</span>
+  <span id="status" class="status">No hunt open</span>
 </header>
-<p class="disclaimer">Results are candidates flagged for review, not accusations. Notices are drafts, nothing is ever sent, and this is not legal advice.</p>
 <div id="billingNote" class="note" hidden></div>
 
 <main>
   <section id="noHunt" hidden>
     <div class="empty">
-      <h2>No hunt open</h2>
-      <p class="muted">Start a hunt, or open an earlier one, and its results appear here.</p>
-      <button class="primary" id="goSetup">Go to New hunt</button>
+      <h2>Nothing to review yet</h2>
+      <p class="muted">Start a hunt, or open an earlier one, and what it finds appears here.</p>
+      <button class="primary" id="goSetup">Start a hunt</button>
     </div>
   </section>
 
   <section id="setup">
-    <div class="columns">
-      <form id="form">
-        <h2>Start a hunt</h2>
-        <label>Brand to protect <input name="brand" value="Tesla" required></label>
-        <label>Search terms <small>Separate with commas.</small> <input name="keywords" value="Tesla giveaway, Musk crypto"></label>
-        <label>The brand's own websites <small>Never flagged. Separate with commas.</small> <input name="officialDomains" value="tesla.com"></label>
-        <label>Authorized sellers <small>Optional. Never flagged.</small> <input name="authorizedSellers"></label>
-        <label>Spending limit in USD <small id="budgetHelp"></small> <input name="budgetUsd" type="number" step="0.01" min="0.01" value="0.25" required></label>
-        <label>What matters more
-          <select name="precision">
-            <option value="balanced">Balanced</option>
-            <option value="precision">Fewer false alarms</option>
-            <option value="recall">Catch as much as possible</option>
-          </select>
-        </label>
+    <form id="form" class="search">
+      <h2 class="hero">Who are we protecting?</h2>
+      <p class="lede">Name a brand. Agents spread out across social media, marketplaces, video sites, websites and group chats, looking for abuse.</p>
+      <div class="searchbar">
+        <input name="brand" aria-label="Brand to protect" placeholder="Tesla" required autofocus autocomplete="off">
         <button class="primary" id="startHunt">Start hunt</button>
-        <p id="formError" class="error" role="alert"></p>
-      </form>
-      <div>
-        <h2>Earlier hunts</h2>
-        <div id="huntList"></div>
-        <details class="fold"><summary>Which models are in use</summary><p id="deciderInfo" class="muted"></p></details>
       </div>
-    </div>
-  </section>
-
-  <section id="live" hidden>
-    <div id="nextStep" class="callout" hidden></div>
-    <div id="counters" class="grid"></div>
-
-    <h2>Spending limit</h2>
-    <div class="meter" role="meter" aria-label="Spending against the limit"><div id="meterFill"></div></div>
-    <p id="meterText" class="muted"></p>
-    <div class="toolbar" id="controls">
-      <button id="pause">Pause</button>
-      <form id="budgetForm" class="inline-form">
-        <label class="inline">New limit, USD <input id="budget" type="number" step="0.01" min="0.01"></label>
-        <button id="setBudget">Update limit</button>
-      </form>
-    </div>
-    <p id="finishedNote" class="muted" hidden>This hunt has finished, so it can't be paused or given more budget. You can still review its results.</p>
-
-    <h2>Scouts</h2>
-    <p class="muted">One scout searches each kind of place.</p>
-    <table><thead><tr><th>Scout</th><th>Searching</th><th>Status</th></tr></thead><tbody id="roster"></tbody></table>
-    <form id="steerForm" class="inline-form" hidden>
-      <label class="inline">Send <select id="steerScout"></select></label>
-      <label class="inline">to search <select id="steerLane"></select></label>
-      <button>Redirect scout</button>
+      <p id="formError" class="error" role="alert"></p>
+      <details class="options">
+        <summary>Options</summary>
+        <div class="option-grid">
+          <label>Search terms <small>Separate with commas. Uses the brand name if blank.</small> <input name="keywords" placeholder="Tesla giveaway, Musk crypto"></label>
+          <label>The brand's own websites <small>Never flagged.</small> <input name="officialDomains" placeholder="tesla.com"></label>
+          <label>Authorized sellers <small>Never flagged.</small> <input name="authorizedSellers"></label>
+          <label>Spending limit in USD <small id="budgetHelp"></small> <input name="budgetUsd" type="number" step="0.01" min="0.01" value="0.25" required></label>
+          <label>What matters more <small>How readily a listing gets flagged.</small>
+            <select name="precision">
+              <option value="balanced">Balanced</option>
+              <option value="precision">Fewer false alarms</option>
+              <option value="recall">Catch as much as possible</option>
+            </select>
+          </label>
+        </div>
+      </details>
     </form>
-
-    <h2>Changes of direction</h2>
-    <p class="muted">When a search stops working, the orchestrator moves that scout and says why.</p>
-    <ul id="steers" class="timeline"></ul>
-
-    <h2>Second opinions</h2>
-    <p class="muted">Reasoning agents called in for cases the quick check couldn't settle, and for the top candidates. Click a row to see the case.</p>
-    <table><thead><tr><th>Agent</th><th>Why</th><th>Candidate</th><th>Outcome</th></tr></thead><tbody id="spawns"></tbody></table>
-
-    <details class="fold"><summary>Activity log and model fallbacks</summary>
-      <ul id="events" class="muted"></ul>
-      <h2>Model fallbacks</h2>
-      <ul id="fallbacks"></ul>
-    </details>
+    <button id="backToWeb" class="return" hidden></button>
+    <div class="earlier">
+      <h2>Earlier hunts</h2>
+      <div id="huntList"></div>
+    </div>
+    <p class="disclaimer">Results are candidates flagged for review, not accusations. Notices are drafts, nothing is ever sent, and this is not legal advice.</p>
   </section>
 
-  <section id="graph" hidden>
-    <div class="graph-bar">
-      <label class="check"><input type="checkbox" data-layer="knowledge" checked> Real sites</label>
-      <label class="check"><input type="checkbox" data-layer="findings" checked> Findings</label>
-      <label class="check"><input type="checkbox" data-layer="orchestration" checked> Agents</label>
-      <span class="spacer"></span>
-      <button id="gZoomIn" aria-label="Zoom in">+</button>
-      <button id="gZoomOut" aria-label="Zoom out">−</button>
-      <button id="gFit">Fit to screen</button>
-    </div>
-    <div class="graph-wrap">
-      <div class="graph-stage">
-        <canvas id="graphCanvas" role="img" aria-label="Graph of the brand's verified presences, the listings found, and the orchestrator's moves. The same nodes are listed in text beside it."></canvas>
-        <p id="graphEmpty" class="graph-empty muted">Nothing found yet.</p>
+  <section id="web" hidden>
+    <div class="stage">
+      <canvas id="webCanvas" role="img" aria-label="A web being woven as agents reach new sites. Each spider marks a flagged listing and is a button."></canvas>
+      <div id="webPoints" class="web-points"></div>
+      <div class="hud">
+        <h2 id="webBrand"></h2>
+        <p id="webLine" class="muted"></p>
+        <p id="webSpend" class="muted"></p>
+        <div class="hud-actions">
+          <button id="pause">Pause</button>
+          <form id="budgetForm" class="limit">
+            <label>Limit, USD <input id="budget" type="number" step="0.01" min="0.01"></label>
+            <button id="setBudget">Set</button>
+          </form>
+          <button id="export">Download report</button>
+        </div>
       </div>
-      <aside class="graph-side">
-        <div id="graphInfo"><p class="muted">Click a node for details. Drag to rearrange, scroll to zoom.</p></div>
-        <ul id="graphLegend" class="legend"></ul>
-        <details><summary id="graphListTitle">All nodes</summary><ul id="graphList" class="nodelist"></ul></details>
+      <p id="webTicker" class="ticker" aria-live="off"></p>
+      <button id="webNext" class="primary next" hidden></button>
+      <aside id="webPanel" class="panel" hidden>
+        <button id="panelClose" class="close" aria-label="Close details">×</button>
+        <div id="panelBody"></div>
       </aside>
     </div>
-  </section>
-
-  <section id="kb" hidden>
-    <h2>What counts as real for this brand</h2>
-    <p id="kbInfo" class="muted"></p>
-    <table><thead><tr><th>Type</th><th>Name</th><th>Status</th><th>Added by</th><th>Evidence</th><th></th></tr></thead><tbody id="kbRows"></tbody></table>
-    <h2>Add one you know is real</h2>
-    <form id="kbForm" class="row">
-      <label>Type <select name="kind"><option value="domain">Website</option><option value="account">Account</option><option value="channel">Channel</option><option value="seller">Seller</option></select></label>
-      <label>Name <input name="value" placeholder="brand.com, or chirp.example/brand for an account" required></label>
-      <button>Add</button>
-    </form>
-    <p id="kbError" class="error" role="alert"></p>
   </section>
 
   <section id="cases" hidden>
@@ -144,14 +97,9 @@
       <div id="caseDetail" class="review-detail"></div>
     </div>
   </section>
-
-  <section id="report" hidden>
-    <p><button id="export">Download as JSON</button></p>
-    <div id="reportBody"></div>
-  </section>
 </main>
 <div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
-<script src="graph.js"></script>
+<script src="web.js"></script>
 <script src="app.js"></script>
 </body>
 </html>
