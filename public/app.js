@@ -94,7 +94,7 @@ $('form').onsubmit = async e => {
     const body = await res.json()
     await intro
     if (!res.ok) { $('formError').textContent = body.error; return }
-    openHunt(body.id)
+    openHunt(body.id, true)
     showTab('web')
   } catch {
     $('formError').textContent = 'Could not reach the server. Is it still running?'
@@ -106,7 +106,7 @@ $('form').onsubmit = async e => {
 }
 
 const HUNT_STARTS_AFTER_MS = 6000
-function openHunt(id) {
+function openHunt(id, startingNow = false) {
   huntId = id
   version = -1
   view = null
@@ -114,7 +114,7 @@ function openHunt(id) {
   location.hash = id
   earlier = []
   closePanel()
-  WebView.reset(id)
+  WebView.reset(id, startingNow)
   connect()
   // The brand's earlier finds fill the web's empty spots from the start.
   fetch(`/api/hunts/${id}/earlier`).then(r => r.json()).then(found => {

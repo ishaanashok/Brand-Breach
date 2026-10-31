@@ -84,20 +84,25 @@ export async function relayBus(o: { workspaceName: string; state: RelayState; sa
   const sending = outbox()
   return {
     async register(agentName): Promise<Participant> {
-      // Relay refuses a second register for a name, so a restarted server reconnects with the saved token.
-      const saved = state.tokens[agentName]
-      const agent: any = saved
-        ? await withBackoff(() => relay.workspace.reconnect({ apiToken: saved }))
-        : await withBackoff(() => relay.workspace.register({ name: agentName, type: 'agent' }))
-      if (agent.token) { state.tokens[agentName] = agent.token; o.save(state) }
-      channels ??= (async () => {
-        for (const c of [HUNT_CHANNEL, REVIEW_CHANNEL]) await withBackoff(() => agent.channels.create({ name: name(c), topic: 'Customs' })).catch(() => {})
+      // Joining can take minutes under load and all state lives in the actors, so agents start now and sends wait for it.
+      const joined = (async () => {
+        // Relay refuses a second register for a name, so a restarted server reconnects with the saved token.
+        const saved = state.tokens[agentName]
+        const agent: any = saved
+          ? await withBackoff(() => relay.workspace.reconnect({ apiToken: saved }))
+          : await withBackoff(() => relay.workspace.register({ name: agentName, type: 'agent' }))
+        if (agent.token) { state.tokens[agentName] = agent.token; o.save(state) }
+        channels ??= (async () => {
+          for (const c of [HUNT_CHANNEL, REVIEW_CHANNEL]) await withBackoff(() => agent.channels.create({ name: name(c), topic: 'Customs' })).catch(() => {})
+        })()
+        await channels
+        await Promise.all([HUNT_CHANNEL, REVIEW_CHANNEL].map(c => withBackoff(() => agent.channels.join(name(c))).catch(() => {})))
+        return agent
       })()
-      await channels
-      await Promise.all([HUNT_CHANNEL, REVIEW_CHANNEL].map(c => withBackoff(() => agent.channels.join(name(c))).catch(() => {})))
+      joined.catch(err => console.error(`[customs] relay join failed for ${agentName}: ${err}`))
       return {
         name: agentName,
-        send: async (to, text) => { sending.add(to, async () => { await withBackoff(() => agent.sendMessage({ to, text: to.startsWith('@') ? addressDm(to, text) : text })) }) },
+        send: async (to, text) => { sending.add(to, async () => { const agent = await joined; await withBackoff(() => agent.sendMessage({ to, text: to.startsWith('@') ? addressDm(to, text) : text })) }) },
       }
     },
     onMessage(fn) {

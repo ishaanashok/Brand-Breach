@@ -87,7 +87,7 @@
 
   let canvas, ctx, overlay, onPick
   let layout, edges, built, adjacency, agents, points, seed, status, started, seen, cases, seenEvents
-  let visible = false, frame = 0, last = 0, hover = false, topRing = 0
+  let live = false, earlierDue = false, visible = false, frame = 0, last = 0, hover = false, topRing = 0
   let cam = { x: 0, y: 0, s: 1 }, inset = 0, width = 0, height = 0, autoFit = true, drawnCam = ''
   const pointers = new Map()
   let pinch = 0
@@ -104,8 +104,10 @@
     reset('')
   }
 
-  function reset(s) {
+  function reset(s, startingNow = false) {
     seed = s
+    live = startingNow && !calm()
+    earlierDue = false
     layout = createLayout(s)
     edges = []
     built = new Set()
@@ -218,7 +220,7 @@
       if (!adjacency.has(p.id)) adjacency.set(p.id, [])
       adjacency.get(p.id).push({ to: q, edge: e })
     }
-    if (e.b.caseId) syncPoint(e.b)
+    for (const j of [e.a, e.b]) if (j.caseId) syncPoint(j)
   }
 
   const spineFrom = j => (j.ring ? layout.knot(j.radial, j.ring - 1) : HUB)
@@ -324,6 +326,9 @@
   function syncPoint(j) {
     const c = cases.get(j.caseId)
     if (!c || !j.woven) return
+    // A spider waits for ring silk to reach its node. An earlier find has no node until then.
+    const tied = (adjacency.get(j.id)?.length ?? 0) >= 3 || status !== 'running'
+    if (earlierIds.has(c.id) && !tied) return
     let el = points.get(j.caseId)
     if (!el) {
       el = document.createElement('button')
@@ -334,7 +339,7 @@
       points.set(j.caseId, el)
       position(el, j)
     }
-    const spider = INFRINGING.has(c.state)
+    const spider = INFRINGING.has(c.state) && tied
     const old = earlierIds.has(c.id)
     const klass = `web-point state-${c.state}${spider ? ' spider' : ''}${old ? ' earlier' : ''}${c.id === chosen ? ' chosen' : ''}`
     if (el.className !== klass) el.className = klass
@@ -505,7 +510,7 @@
     const first = !seen.size && !agents.size
     status = view.hunt.status
     chosen = selected
-    const instant = calm() || (first && view.cases.length > 0)
+    const instant = calm() || (!live && first && view.cases.length > 0)
     for (const name of Object.keys(view.hunt.roster ?? {})) agentFor(name, AGENT_LABEL[name] ?? name, name)
     for (const c of view.cases) {
       if (!c.hit) continue
@@ -519,15 +524,28 @@
         agentFor(surface, AGENT_LABEL[surface] ?? surface, surface).jobs.push(j)
       }
     }
-    // Already found, so they appear at once rather than being spun as if searched for now.
+    // Already found, so they appear at once when opening a hunt. In a hunt starting now, its own searches
+    // weave the web and these wait for the silk, without making it grow.
     let added = false
     for (const c of view.earlier ?? []) {
       if (!c.hit || seen.has(c.id)) continue
       seen.add(c.id)
       earlierIds.add(c.id)
       cases.set(c.id, c)
-      topRing = Math.max(topRing, layout.place(c.id, c.hit.surface).ring)
+      const j = layout.place(c.id, c.hit.surface)
+      if (live) continue
+      topRing = Math.max(topRing, j.ring)
       added = true
+    }
+    // Once the hunt has stopped, the web finishes so that every earlier find has a place on it.
+    if (live && !earlierDue && status !== 'running' && status !== 'paused') {
+      earlierDue = true
+      for (const id of earlierIds) {
+        const j = layout.placed.get(id)
+        topRing = Math.max(topRing, j.ring)
+        const surface = layout.radials[j.radial].surface
+        agentFor(surface, AGENT_LABEL[surface] ?? surface, surface).jobs.push(j)
+      }
     }
     if (instant || added) weaveNow()
     for (const e of view.hunt.events ?? []) {
