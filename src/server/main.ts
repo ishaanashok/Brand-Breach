@@ -70,7 +70,9 @@ const app = await createServer({
       if (!spider) {
         spider = spiderSource({
           nim: nimClient({ apiKey: env.NIM_API_KEY, baseUrl: env.NIM_BASE_URL, model: env.NIM_MODEL }),
-          brand: input.brand, officialDomains: input.officialDomains,
+          brand: input.brand, officialDomains: input.officialDomains, maxSearches: input.maxSearches,
+          onSearch: () => { store.hunt(huntId).bump('searches').catch(() => {}) },
+          gate: async () => { while ((await store.hunt(huntId).snapshot()).status === 'paused') await Bun.sleep(1000) },
           onActivity: (surface, text) => { store.hunt(huntId).log(`${SURFACE_LABEL[surface] ?? surface}: ${text}`, Date.now()).catch(() => {}) },
         })
         spiders.set(huntId, spider)

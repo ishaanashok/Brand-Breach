@@ -63,6 +63,8 @@ export type HuntInput = {
   officialDomains: string[]
   authorizedSellers: string[]
   budgetUsd: number
+  /** Most web searches a spider hunt may make; free models never reach a money limit. */
+  maxSearches?: number
   precision: Precision
 }
 

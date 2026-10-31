@@ -96,6 +96,13 @@ export class HuntRunner {
     // Scouts start only once the real sites are known, so none are flagged or paid for.
     if (this.d.reasoner && announce) await ensureKb({ huntId: this.huntId, input, brandSlug: this.brandSlug, store, reasoner: this.d.reasoner, me: orchestratorMe })
 
+    const known = await store.hunt(this.huntId).snapshot()
+    const caseUrls = await Promise.all(known.caseIds.map(async id => (await store.kase(id).snapshot()).hit?.url))
+    this.d.source.restore?.({
+      searches: known.counters.searches ?? 0,
+      urls: [...caseUrls.filter((u): u is string => !!u), ...Object.keys((await store.brand(this.brandSlug).snapshot()).seen)],
+    })
+
     const lanes = await this.initialLanes()
     const common = { huntId: this.huntId, input, brandSlug: this.brandSlug, store, bus, source: this.d.source, triage: this.d.triage, delayMs: this.d.timing.scoutDelayMs }
     this.scouts = SURFACES.map(s => new Scout(s, common, lanes[s]))
@@ -110,9 +117,14 @@ export class HuntRunner {
     this.every(this.d.timing.verifyMs, () => orch.escalate())
     this.every(this.d.timing.verifyMs, async () => {
       const n = await verifyTick({ huntId: this.huntId, input, brandSlug: this.brandSlug, store, me: verifierMe, verify: this.d.verify, estUsd: this.d.verifyEstUsd })
-      if (n === 0 && !this.reasoners.size && await orch.finished() && !(await this.hasTriaged()) && !(await orch.escalations()).length) {
+      const now = await store.hunt(this.huntId).snapshot()
+      if (now.status === 'paused') this.d.source.touch?.()
+      const over = this.d.source.over?.() ?? null
+      if (n === 0 && !this.reasoners.size && (over ? !(await this.hasUnclassified()) : await orch.finished()) && !(await this.hasTriaged()) && !(await orch.escalations()).length) {
         const h = await store.hunt(this.huntId).snapshot()
-        if (h.status === 'running') await store.hunt(this.huntId).setStatus('done')
+        if (h.status !== 'running') return
+        if (over) await store.hunt(this.huntId).log(`Finished: ${over}.`, Date.now())
+        await store.hunt(this.huntId).setStatus('done')
       }
     })
   }
@@ -164,6 +176,12 @@ export class HuntRunner {
       .finally(() => { release(); this.reasoners.delete(run) })
     this.reasoners.add(run)
     return true
+  }
+
+  private async hasUnclassified() {
+    const { caseIds } = await this.d.store.hunt(this.huntId).snapshot()
+    const cases = await Promise.all(caseIds.map(id => this.d.store.kase(id).snapshot()))
+    return cases.some(c => c.state === 'new')
   }
 
   private async hasTriaged() {

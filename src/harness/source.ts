@@ -11,6 +11,12 @@ export interface Source {
   followLead(lead: Lead, lane: Lane): Promise<SearchResult>
   /** Every lane a scout on this surface may be steered to. */
   lanes(surface: Lane['source'], keywords: string[]): Lane[]
+  /** Hands back what was already covered, after a restart or by an earlier hunt for this brand. */
+  restore?(known: { searches: number; urls: string[] }): void
+  /** Why this source has nothing left to do, or null while it still has. */
+  over?(): string | null
+  /** Paused time doesn't count as having nothing to do. */
+  touch?(): void
 }
 
 /** Switches to the backup if the primary returns too few candidates in the window. */

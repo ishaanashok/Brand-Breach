@@ -153,7 +153,12 @@ export class Scout {
   private async triage(id: string, hit: Hit, priceFlag: boolean) {
     const text = hitText(hit) + (priceFlag ? '\nPrice is far below the usual price.' : '')
     const est = (estimateTokens(text) / 1e6) * this.d.triage.price.usdPerMInput
-    const r = await this.hunt.reserve(this.name, est, Date.now())
+    let r = await this.hunt.reserve(this.name, est, Date.now())
+    // Pausing holds a page back; it must not lose it unclassified.
+    while (!r.ok && r.reason === 'paused') {
+      await Bun.sleep(this.d.delayMs)
+      r = await this.hunt.reserve(this.name, est, Date.now())
+    }
     if (!r.ok) return
     try {
       const res = await this.d.triage.decide({ text }, triageQuestions(this.d.input.brand), { timeoutMs: TRIAGE_TIMEOUT_MS })

@@ -1,6 +1,6 @@
 // The hunt, drawn as a web being woven. Agents spin radial and spiral silk as they search, with a
 // point at each junction. A listing sits on a junction, and a spider stays behind at each one
-// flagged as an infringement. Only listings are data: the rest of the silk is how the search looks.
+// flagged as an infringement. Agents only spin when they really search or read, and never retrace silk for show.
 ;(() => {
   const SURFACES = ['social', 'marketplace', 'video', 'domains', 'channels']
   const AGENT_LABEL = { social: 'Social media', marketplace: 'Marketplaces', video: 'Video sites', domains: 'Websites', channels: 'Group chats' }
@@ -8,6 +8,7 @@
   const SPREAD_RINGS = 6 // Listings scatter over this many rings, so spiders don't bunch up.
   const AMBIENT_RINGS = 8
   const FAR = 2600
+  const SILK_PER_ACTION = 3
   const hash = s => {
     let h = 2166136261
     for (const ch of String(s)) { h ^= ch.charCodeAt(0); h = Math.imul(h, 16777619) }
@@ -68,7 +69,7 @@
     <ellipse cx="0" cy="4" rx="4.4" ry="5.6" fill="currentColor"/><circle cx="0" cy="-3.2" r="2.9" fill="currentColor"/></svg>`
 
   let canvas, ctx, overlay, onPick
-  let layout, edges, built, adjacency, agents, points, seed, status, started, seen, cases
+  let layout, edges, built, adjacency, agents, points, seed, status, started, seen, cases, seenEvents
   let visible = false, frame = 0, last = 0, hover = false, topRing = 0
   let cam = { x: 0, y: 0, s: 1 }, inset = 0, width = 0, height = 0
   const calm = () => matchMedia('(prefers-reduced-motion: reduce)').matches
@@ -93,6 +94,7 @@
     points = new Map()
     seen = new Set()
     cases = new Map()
+    seenEvents = new Set()
     status = 'running'
     started = null
     topRing = 0
@@ -191,13 +193,11 @@
   }
 
   function agentFor(name, label, surface) {
-    if (!agents.has(name)) agents.set(name, { name, label, surface, node: HUB, x: 0, y: 0, jobs: [], walk: [], step: null, lay: null, t: 0, rest: noise(seed, name) * 0.5, phase: noise(seed, 'p', name) * 6, alpha: 0, heading: noise(seed, 'h', name) * 6 })
+    if (!agents.has(name)) agents.set(name, { name, label, surface, node: HUB, x: 0, y: 0, jobs: [], walk: [], step: null, lay: null, t: 0, silk: 0, phase: noise(seed, 'p', name) * 6, alpha: 0, heading: noise(seed, 'h', name) * 6 })
     return agents.get(name)
   }
 
-  const ceiling = () => (status === 'running' ? Math.max(AMBIENT_RINGS, topRing + 2) : topRing + 2)
-
-  /** What this agent does next, or nothing. Listings it found come first, then spinning more web. */
+  /** What this agent does next, or nothing. Listings it found come first, then silk for what it really did. */
   function nextWork(a) {
     while (a.jobs.length) {
       const j = a.jobs[0]
@@ -206,7 +206,9 @@
       if (stretch) return stretch
       break
     }
-    return a.surface ? ambient(a.surface, ceiling()) : null
+    if (!a.surface || a.silk <= 0 || status !== 'running') return null
+    const stretch = ambient(a.surface, Math.max(AMBIENT_RINGS, topRing + 2))
+    return stretch && { ...stretch, earned: true }
   }
 
   function advance(a, dt) {
@@ -237,17 +239,12 @@
         a.walk = route(a.node, work.from)
         if (a.walk.length) return
       }
+      if (work.earned) a.silk--
       a.lay = addEdge(work.from, work.to, work.kind)
       a.t = 0
       return
     }
     a.idle = true
-    a.rest -= dt
-    if (a.rest > 0 || status !== 'running') return
-    const options = adjacency.get(a.node.id) ?? []
-    if (!options.length) { a.rest = 0.5; return }
-    a.walk = [{ from: a.node, ...options[Math.floor(Math.random() * options.length)] }]
-    a.rest = 0.3 + Math.random() * 1.2
   }
 
   function place(a, p) {
@@ -425,6 +422,14 @@
       }
     }
     if (instant) weaveNow()
+    for (const e of view.hunt.events ?? []) {
+      const key = `${e.at}:${e.text}`
+      if (seenEvents.has(key)) continue
+      seenEvents.add(key)
+      if (first || !/: (searching|reading) /.test(e.text)) continue
+      const surface = SURFACES.find(s => e.text.startsWith(`${AGENT_LABEL[s]}:`))
+      if (surface) agentFor(surface, AGENT_LABEL[surface], surface).silk += SILK_PER_ACTION
+    }
     for (const id of seen) syncPoint(layout.placed.get(id))
     for (const s of view.hunt.spawns ?? []) {
       const j = layout.placed.get(s.caseId)

@@ -1,7 +1,7 @@
 import { expect, test } from 'bun:test'
-import { nimClient, runSpider, spiderSource, type ChatMessage } from '../src/harness/spiders'
+import { nimClient, runSpider, spiderSource, webMemory, type ChatMessage } from '../src/harness/spiders'
 import { glmKbReasoner } from '../src/reasoners/glm'
-import { htmlToPage, isPrivateAddress, parseBing, parseDuckDuckGo, readPage } from '../src/harness/web'
+import { htmlToPage, isPrivateAddress, onTopic, parseBing, parseBrave, parseDuckDuckGo, readPage, searchDegraded, searchOnce } from '../src/harness/web'
 
 const call = (name: string, args: unknown) => ({ id: name, type: 'function' as const, function: { name, arguments: JSON.stringify(args) } })
 const scripted = (turns: ChatMessage[]) => {
@@ -37,6 +37,76 @@ test('a lane runs once, then reports nothing so the hunt can end', async () => {
   await s.search(lane)
   await s.search(lane)
   expect(nim.sent.length).toBe(1)
+})
+
+test('agents sharing a hunt get refused repeats and only see new results', async () => {
+  const memory = webMemory()
+  const items = async () => [{ url: 'https://www.acme-outlet.shop/deals', title: 'A', snippet: '' }, { url: 'https://other.shop/', title: 'B', snippet: '' }]
+  const first = scripted([{ role: 'assistant', content: null, tool_calls: [call('web_search', { query: 'Acme outlet deals' })] }, { role: 'assistant', content: null, tool_calls: [call('report', { candidates: [{ url: 'https://acme-outlet.shop/deals' }] })] }])
+  expect((await runSpider({ ...base, nim: first, memory, search: items, read: async url => ({ url, title: 't', text: 'x' }) })).hits.length).toBe(1)
+
+  const second = scripted([
+    { role: 'assistant', content: null, tool_calls: [call('web_search', { query: '"deals" acme OUTLET' })] },
+    { role: 'assistant', content: null, tool_calls: [call('web_search', { query: 'acme telegram giveaway' })] },
+    { role: 'assistant', content: null, tool_calls: [call('report', { candidates: [{ url: 'https://acme-outlet.shop/deals' }] })] },
+  ])
+  const r = await runSpider({ ...base, nim: second, memory, search: items, read: async url => ({ url, title: 't', text: 'x' }) })
+  expect(second.sent[0]![1]!.content).toContain('Acme outlet deals')
+  expect(second.sent[1]!.at(-1)!.content).toContain('already ran')
+  expect(second.sent[2]!.at(-1)!.content).toContain('already covered')
+  expect(r.searches).toBe(1)
+  expect(r.hits).toEqual([])
+})
+
+test('a page is read once and a site only so often', () => {
+  const m = webMemory()
+  expect(m.claimRead('https://t.me/a')).toBeNull()
+  expect(m.claimRead('https://t.me/a')).toContain('already read')
+  expect(m.claimRead('https://t.me/b')).toBeNull()
+  expect(m.claimRead('https://t.me/c')).toBeNull()
+  expect(m.claimRead('https://t.me/d')).toContain('enough')
+})
+
+test('a hunt ends at its search limit, even for agents already out', async () => {
+  const nim = scripted([{ role: 'assistant', content: null, tool_calls: [call('web_search', { query: 'one' }), call('web_search', { query: 'two' })] }])
+  let n = 0
+  const s = spiderSource({ brand: 'Acme', officialDomains: [], nim, maxSearches: 1, search, onSearch: () => n++ })
+  const lanes = s.lanes('domains', ['acme'])
+  expect(s.over!()).toBeNull()
+  await s.search(lanes[0]!)
+  expect(n).toBe(1)
+  expect(nim.sent[1]!.at(-1)!.content).toContain('limit')
+  expect(s.over!()).toContain('1 searches')
+  const before = nim.sent.length
+  await s.search(lanes[1]!)
+  await s.followLead({ kind: 'domain', value: 'x.shop' }, lanes[1]!)
+  expect(nim.sent.length).toBe(before)
+})
+
+test('a hunt ends when agents stop finding anything new, or nothing is left to start', async () => {
+  const nim = scripted([])
+  const s = spiderSource({ brand: 'Acme', officialDomains: [], nim })
+  for (const surface of ['domains', 'video', 'social'] as const) for (const l of s.lanes(surface, ['a'])) await s.search(l)
+  expect(s.over!()).toContain('nothing new')
+
+  let t = 0
+  const idle = spiderSource({ brand: 'Acme', officialDomains: [], nim, now: () => t })
+  t = 59_000
+  expect(idle.over!()).toBeNull()
+  idle.touch!()
+  t = 118_000
+  expect(idle.over!()).toBeNull()
+  t = 120_000
+  expect(idle.over!()).toContain('anywhere new')
+})
+
+test('a resumed hunt keeps its count and does not report old pages again', async () => {
+  const nim = scripted([{ role: 'assistant', content: null, tool_calls: [call('web_search', { query: 'fresh angle' })] }, { role: 'assistant', content: null, tool_calls: [call('report', { candidates: [{ url: 'https://acme-outlet.shop/deals' }] })] }])
+  const s = spiderSource({ brand: 'Acme', officialDomains: [], nim, maxSearches: 5, search })
+  s.restore!({ searches: 4, urls: ['https://acme-outlet.shop/deals'] })
+  const r = await s.search(s.lanes('domains', ['a'])[0]!)
+  expect(r.hits).toEqual([])
+  expect(s.over!()).toContain('5 searches')
 })
 
 test('NIM is asked for low reasoning, and rate limits are retried', async () => {
@@ -77,4 +147,34 @@ test('the knowledge base comes from search results and never classifies', async 
   const { proposals } = await r.buildKb({ brand: 'Acme', keywords: [], officialDomains: [], authorizedSellers: [] })
   expect(proposals).toEqual([{ kind: 'domain', value: 'acme.com', confidence: 0.95, evidence: 'top result' }])
   expect(r.kbOnly).toBe(true)
+})
+
+test('off-topic fallback results are dropped', () => {
+  const item = (url: string, title = 'x') => ({ url, title, snippet: '' })
+  expect(onTopic('site:dhgate.com reebok shoes', [item('https://www.reebok.com/', 'Reebok shoes'), item('https://www.dhgate.com/p/1', 'Reebok shoes')]).map(i => i.url)).toEqual(['https://www.dhgate.com/p/1'])
+  expect(onTopic('reebok replica telegram', [item('https://www.reebok.com/', 'Reebok'), item('https://x.shop/a', 'Reebok replica')]).map(i => i.url)).toEqual(['https://x.shop/a'])
+})
+
+test('when DuckDuckGo stops answering it is rested, and search says so', async () => {
+  const asked: string[] = []
+  const f = (async (url: string) => {
+    asked.push(new URL(url).hostname)
+    if (url.includes('duckduckgo')) throw new Error('timed out')
+    return new Response('<li class="b_algo"><h2><a href="https://fake.shop/a">Acme replica</a></h2><p>x</p></li>')
+  }) as any
+  let t = Date.now()
+  expect((await searchOnce('acme replica', { f, now: () => t })).map(i => i.url)).toEqual(['https://fake.shop/a'])
+  expect(searchDegraded()).toBe(true)
+  await searchOnce('acme replica', { f, now: () => t })
+  expect(asked).toEqual(['html.duckduckgo.com', 'www.bing.com', 'www.bing.com'])
+})
+
+test('a search API key is used in place of scraping', async () => {
+  const f = (async (url: string, init: any) => {
+    expect(url).toContain('api.search.brave.com')
+    expect(init.headers['x-subscription-token']).toBe('k')
+    return Response.json({ web: { results: [{ url: 'https://fake.shop/a', title: '<b>A</b>', description: 'd' }] } })
+  }) as any
+  expect(await searchOnce('acme', { f, braveKey: 'k' })).toEqual([{ url: 'https://fake.shop/a', title: 'A', snippet: 'd' }])
+  expect(parseBrave({})).toEqual([])
 })

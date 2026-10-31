@@ -61,23 +61,84 @@ export function parseBing(html: string): SearchItem[] {
   return out
 }
 
-/** A real web search. Falls through to the second engine when the first blocks or returns nothing. */
-export async function webSearch(query: string, f: Fetch = fetch): Promise<SearchItem[]> {
-  const engines: [string, (h: string) => SearchItem[]][] = [
-    [`https://html.duckduckgo.com/html/?q=${encodeURIComponent(query)}`, parseDuckDuckGo],
-    [`https://www.bing.com/search?q=${encodeURIComponent(query)}&setlang=en`, parseBing],
-  ]
+/** Bing's scrape often ignores most of a query, so its results must show they are about it. */
+export function onTopic(query: string, items: SearchItem[]): SearchItem[] {
+  const sites = [...query.matchAll(/\bsite:([^\s"]+)/gi)].map(m => m[1]!.toLowerCase().replace(/^www\./, ''))
+  const words = query.toLowerCase().replace(/-?\bsite:\S+/g, ' ').split(/[^\p{L}\p{N}]+/u).filter(w => w.length > 2 && w !== 'and' && w !== 'the')
+  const need = Math.min(2, words.length)
+  return items.filter(i => {
+    let host = ''
+    try { host = new URL(i.url).hostname.toLowerCase() } catch { return false }
+    if (sites.length && !sites.some(x => host === x || host.endsWith(`.${x}`))) return false
+    const text = `${i.url} ${i.title} ${i.snippet}`.toLowerCase()
+    return words.filter(w => text.includes(w)).length >= need
+  })
+}
+
+export function parseBrave(body: any): SearchItem[] {
+  const results = body?.web?.results
+  return (Array.isArray(results) ? results : []).filter((r: any) => typeof r?.url === 'string' && /^https?:/.test(r.url))
+    .map((r: any) => ({ url: r.url, title: stripTags(String(r.title ?? '')), snippet: stripTags(String(r.description ?? '')) }))
+}
+
+const MIN_GAP_MS = 3000 // Searching faster than this got the machine blocked by DuckDuckGo.
+const COOL_DOWN_MS = 5 * 60_000
+const CACHE_SIZE = 500
+const cache = new Map<string, SearchItem[]>()
+let queue: Promise<unknown> = Promise.resolve()
+let lastSearch = 0
+let primaryRestsUntil = 0
+
+/** Whether search is running on its weak fallback, so a thin hunt can say why. */
+export const searchDegraded = () => Date.now() < primaryRestsUntil
+
+/** One attempt at a real web search: an API if there's a key, else DuckDuckGo, else on-topic Bing results. */
+export async function searchOnce(query: string, o: { f?: Fetch; braveKey?: string; now?: () => number } = {}): Promise<SearchItem[]> {
+  const f = o.f ?? fetch
+  const now = o.now ?? Date.now
   const failures: string[] = []
-  for (const [url, parse] of engines) {
-    try {
-      const res = await f(url, { headers: { 'user-agent': UA, 'accept-language': 'en-US,en' }, signal: AbortSignal.timeout(12_000) })
-      if (!res.ok) { failures.push(`${new URL(url).hostname} ${res.status}`); continue }
-      const items = parse(await res.text())
-      if (items.length) return items.slice(0, 10)
-      failures.push(`${new URL(url).hostname} returned nothing`)
-    } catch (err) { failures.push(String(err)) }
+  const headers = { 'user-agent': UA, 'accept-language': 'en-US,en' }
+  if (o.braveKey) {
+    const res = await f(`https://api.search.brave.com/res/v1/web/search?count=10&q=${encodeURIComponent(query)}`, { headers: { accept: 'application/json', 'x-subscription-token': o.braveKey }, signal: AbortSignal.timeout(12_000) })
+    if (!res.ok) throw new Error(`search failed: Brave ${res.status}`)
+    return parseBrave(await res.json())
   }
+  if (now() >= primaryRestsUntil) {
+    try {
+      const res = await f(`https://html.duckduckgo.com/html/?q=${encodeURIComponent(query)}`, { headers, signal: AbortSignal.timeout(12_000) })
+      if (!res.ok) throw new Error(`DuckDuckGo ${res.status}`)
+      const items = parseDuckDuckGo(await res.text())
+      if (items.length) return items.slice(0, 10)
+      failures.push('DuckDuckGo returned nothing')
+    } catch (err) {
+      primaryRestsUntil = now() + COOL_DOWN_MS
+      failures.push(String(err))
+    }
+  }
+  try {
+    const res = await f(`https://www.bing.com/search?q=${encodeURIComponent(query)}&setlang=en`, { headers, signal: AbortSignal.timeout(12_000) })
+    if (!res.ok) throw new Error(`Bing ${res.status}`)
+    return onTopic(query, parseBing(await res.text())).slice(0, 10)
+  } catch (err) { failures.push(String(err)) }
   throw new Error(`search failed: ${failures.join('; ')}`)
+}
+
+/** Every hunt shares one polite queue, and the same search is never sent twice. */
+export function webSearch(query: string): Promise<SearchItem[]> {
+  const key = query.trim().toLowerCase()
+  const known = cache.get(key)
+  if (known) return Promise.resolve(known)
+  const run = queue.then(async () => {
+    const wait = lastSearch + MIN_GAP_MS - Date.now()
+    if (wait > 0) await Bun.sleep(wait)
+    lastSearch = Date.now()
+    const items = await searchOnce(query, { braveKey: process.env.BRAVE_SEARCH_API_KEY })
+    if (cache.size >= CACHE_SIZE) cache.clear()
+    if (items.length) cache.set(key, items)
+    return items
+  })
+  queue = run.catch(() => {})
+  return run
 }
 
 const privateV4 = (ip: string) => {

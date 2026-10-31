@@ -77,7 +77,7 @@ $('form').onsubmit = async e => {
   try {
     const res = await post('/api/hunts', {
       brand: f.get('brand'), keywords: list(f.get('keywords')).length ? list(f.get('keywords')) : [f.get('brand').trim()], officialDomains: list(f.get('officialDomains')),
-      authorizedSellers: list(f.get('authorizedSellers')), budgetUsd: Number(f.get('budgetUsd')), precision: f.get('precision'),
+      authorizedSellers: list(f.get('authorizedSellers')), budgetUsd: Number(f.get('budgetUsd')), ...(config.source === 'spiders' ? { maxSearches: Number(f.get('maxSearches')) } : {}), precision: f.get('precision'),
     })
     const body = await res.json()
     if (!res.ok) { $('formError').textContent = body.error; return }
@@ -139,10 +139,13 @@ function renderHud(h) {
   const spiders = view.cases.filter(c => ['verified', 'awaiting_approval', 'approved'].includes(c.state)).length
   const state = { running: 'Weaving', paused: 'Paused', done: 'Finished', budget_exhausted: 'Stopped at the limit' }[h.status] ?? h.status
   $('webLine').textContent = `${state}. ${view.cases.length} ${view.cases.length === 1 ? 'site' : 'sites'}, ${spiders} ${spiders === 1 ? 'spider' : 'spiders'}.`
-  $('webSpend').textContent = `${usd(h.spent)} of ${usd(h.input.budgetUsd)} used. ${costNote()}`
+  const searching = config.source === 'spiders'
+  $('webSpend').textContent = searching
+    ? `${h.counters.searches ?? 0} of ${h.input.maxSearches ?? 40} searches used.`
+    : `${usd(h.spent)} of ${usd(h.input.budgetUsd)} used. ${costNote()}`
   const finished = h.status === 'done'
   $('pause').hidden = finished
-  $('budgetForm').hidden = finished
+  $('budgetForm').hidden = finished || searching
   $('pause').textContent = h.status === 'paused' ? 'Resume' : 'Pause'
   $('pause').disabled = h.status === 'budget_exhausted'
   if (document.activeElement !== $('budget')) $('budget').value = h.input.budgetUsd
@@ -326,6 +329,8 @@ function renderBilling() {
   if (!real && config.source === 'tape') $('billingNote').innerHTML = '<b>Recorded demo.</b> These results come from a made-up tape, not the web. Set NIM_API_KEY to search for real.'
   $('billingNote').classList.toggle('real', real)
   if (real) $('billingNote').innerHTML = `<b>Real money.</b> ${esc(config.billed.join(', '))} ${config.billed.length === 1 ? 'is' : 'are'} charged by OpenAI to the account of the configured API key. Customs stops at your limit, but set a cap in your OpenAI account too.`
+  $('searchLimit').hidden = config.source !== 'spiders'
+  $('spendLimit').hidden = config.source === 'spiders'
   $('budgetHelp').textContent = real
     ? 'The most this hunt may charge to your OpenAI account.'
     : config.source === 'tape' ? 'Demo mode: costs are simulated, no real money.' : 'GLM runs on NIM credits and Laya runs here, so nothing is counted against this yet.'
@@ -338,7 +343,7 @@ async function loadHunts() {
   const { summaries } = await res.json()
   setHtml($('huntList'), summaries.length
     ? `<ul class="hunts">${summaries.map(h =>
-      `<li><button class="${h.id === huntId ? 'sel' : ''}" data-h="${esc(h.id)}"><span>${esc(h.brand)}</span><span>${h.verified} confirmed</span><span>${esc(WHEN.format(h.startedAt))}</span><span>${esc(STATUS_LABEL[h.status] ?? h.status)}, ${usd(h.spentUsd)}</span></button></li>`).join('')}</ul>`
+      `<li><button class="${h.id === huntId ? 'sel' : ''}" data-h="${esc(h.id)}"><span>${esc(h.brand)}</span><span>${h.verified} confirmed</span><span>${esc(WHEN.format(h.startedAt))}</span><span>${esc(STATUS_LABEL[h.status] ?? h.status)}${config.source === 'spiders' ? '' : `, ${usd(h.spentUsd)}`}</span></button></li>`).join('')}</ul>`
     : '<p class="muted">None yet. Your first hunt will appear here.</p>')
 }
 $('huntList').onclick = e => {

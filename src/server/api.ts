@@ -39,7 +39,7 @@ function parseInput(b: any): HuntInput | null {
   const strs = (x: unknown) => (Array.isArray(x) ? x.filter(s => typeof s === 'string' && s.trim()).map((s: string) => s.trim()) : [])
   return {
     brand: b.brand.trim(), keywords: strs(b.keywords), officialDomains: strs(b.officialDomains), authorizedSellers: strs(b.authorizedSellers),
-    budgetUsd: b.budgetUsd, precision: ['precision', 'recall'].includes(b.precision) ? b.precision : 'balanced',
+    budgetUsd: b.budgetUsd, ...(Number.isInteger(b.maxSearches) && b.maxSearches > 0 ? { maxSearches: Math.min(b.maxSearches, 500) } : {}), precision: ['precision', 'recall'].includes(b.precision) ? b.precision : 'balanced',
   }
 }
 
