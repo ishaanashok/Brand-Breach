@@ -341,7 +341,7 @@
     }
     const spider = INFRINGING.has(c.state) && tied
     const old = earlierIds.has(c.id)
-    const klass = `web-point state-${c.state}${spider ? ' spider' : ''}${old ? ' earlier' : ''}${c.id === chosen ? ' chosen' : ''}`
+    const klass = `web-point state-${c.state}${spider ? ' spider' : ''}${old ? ' from-earlier' : ''}${c.id === chosen ? ' chosen' : ''}`
     if (el.className !== klass) el.className = klass
     // Nobody read an unreadable page, so it has no real score to show.
     const color = spider ? riskColor(levelOf(c)) : c.state === 'unreadable' ? '' : paleRiskColor(levelOf(c))

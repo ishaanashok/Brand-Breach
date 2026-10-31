@@ -8,7 +8,8 @@
 html, body { height: 100%; }
 body { margin: 0; background: var(--bg); color: var(--ink); font: 15px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif; -webkit-font-smoothing: antialiased; }
 header { height: var(--head); display: flex; align-items: center; gap: 22px; padding: 0 20px; border-bottom: 1px solid var(--line); }
-h1 { margin: 0; font-size: 16px; font-weight: 600; letter-spacing: -.01em; }
+h1 { margin: 0; font-size: 16px; font-weight: 600; letter-spacing: -.01em; line-height: 0; }
+.logo { display: block; height: 24px; width: auto; }
 h2 { font-size: 15px; margin: 24px 0 8px; font-weight: 600; }
 nav { display: flex; gap: 2px; flex: 1; }
 nav button { border: 0; background: none; color: var(--muted); border-radius: 99px; padding: 5px 13px; }
@@ -83,8 +84,6 @@ body:has(.note:not([hidden])) .stage { height: calc(100dvh - var(--head) - 38px)
 .web-point.spider:hover svg { transform: scale(1.22); }
 .web-point.spider.state-awaiting_approval::after { content: ""; position: absolute; inset: 1px; border-radius: 50%; border: 1px solid rgba(255,255,255,.55); animation: ping 2.4s ease-out infinite; }
 .web-point.spider.state-approved svg { opacity: .55; }
-.web-point.earlier { opacity: .6; }
-.web-point.earlier:hover { opacity: 1; }
 .risk-scale { display: flex; align-items: center; gap: 6px; font-size: 12px; }
 .risk-scale i { width: 72px; height: 6px; border-radius: 3px; background: linear-gradient(90deg, hsl(120 85% 55%), hsl(60 85% 55%), hsl(0 85% 55%)); }
 .web-point.chosen::after { content: ""; position: absolute; inset: -2px; border-radius: 50%; border: 1.5px solid #fff; animation: none; }
