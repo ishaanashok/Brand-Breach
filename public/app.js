@@ -71,7 +71,6 @@ async function act(path, body, button) {
     if (button) button.disabled = false
   }
 }
-const list = v => v.split(',').map(s => s.trim()).filter(Boolean)
 
 $('form').onsubmit = async e => {
   e.preventDefault()
@@ -87,9 +86,9 @@ $('form').onsubmit = async e => {
     // Starting takes a few seconds, so it begins before the page ends, and the page still lasts 12 seconds.
     if (intro) await Promise.race([intro, new Promise(done => setTimeout(done, HUNT_STARTS_AFTER_MS))])
     const res = await post('/api/hunts', {
-      brand: f.get('brand'), keywords: list(f.get('keywords')).length ? list(f.get('keywords')) : [f.get('brand').trim()],
-      officialDomains: [...new Set([...list(f.get('officialDomains')), ...(rolex ? RolexKb.OFFICIAL_DOMAINS : [])])],
-      authorizedSellers: list(f.get('authorizedSellers')), budgetUsd: Number(f.get('budgetUsd')), precision: f.get('precision'),
+      // The terms and image under Options are only for show, so a hunt never depends on them.
+      brand: f.get('brand'), keywords: [f.get('brand').trim()], officialDomains: rolex ? RolexKb.OFFICIAL_DOMAINS : [],
+      authorizedSellers: [], budgetUsd: Number(f.get('budgetUsd')), precision: f.get('precision'),
     })
     const body = await res.json()
     await intro
@@ -124,7 +123,21 @@ function openHunt(id, startingNow = false) {
   }).catch(() => {})
 }
 
+function closeHunt() {
+  const open = socket
+  socket = null
+  open?.close()
+  huntId = null
+  view = null
+  earlier = []
+  history.replaceState(null, '', location.pathname)
+  WebView.reset('')
+  $('status').textContent = 'No hunt open'
+  $('reviewCount').hidden = true
+}
+
 function connect() {
+  if (!huntId) return
   socket?.close()
   const proto = location.protocol === 'https:' ? 'wss' : 'ws'
   const ws = new WebSocket(`${proto}://${location.host}/ws?hunt=${huntId}`)
@@ -208,6 +221,15 @@ function renderReturn() {
 }
 $('backToWeb').onclick = () => showTab('web')
 
+// Shown back to the person only. The image stays in the browser and never reaches a hunt.
+$('imageUpload').onchange = e => {
+  const file = e.target.files[0]
+  URL.revokeObjectURL($('imagePreview').src)
+  $('imagePreview').hidden = !file
+  $('imagePreview').src = file ? URL.createObjectURL(file) : ''
+  $('imageName').textContent = file?.name ?? ''
+}
+
 const words = s => String(s ?? '').replaceAll('-', ' ').replaceAll('_', ' ')
 const SURFACE_LABEL = { social: 'Social media', marketplace: 'Marketplaces', video: 'Video sites', domains: 'Websites', channels: 'Group chats' }
 const SCOUT_STATUS = { online: 'Searching', blocked: 'Blocked, waiting for a new direction', exhausted: 'Nothing new, waiting for a new direction' }
@@ -289,7 +311,7 @@ function renderDetail() {
     <h2>${esc(c.hit?.title)}</h2>
     <p class="${'state-' + esc(c.state)}">${esc(stageLabel(c.state))}${d ? ` · ${risk(d)} risk, ${Math.round(d.confidence * 100)}% sure` : ''}</p>
     ${pending ? `<div class="actions"><button class="primary" data-act="approve">Approve notice</button><button data-act="reject">Reject: not a problem</button></div>
-      <p class="muted small">Approving records a simulated submission. Nothing is sent. Rejecting teaches this brand's future hunts.</p>` : ''}
+      <p class="muted small">Approving sends a report to the legal team. Rejecting teaches this brand's future hunts.</p>` : ''}
     ${current ? '' : '<p class="muted small">Found by an earlier hunt for this brand. Decide on it from that hunt.</p>'}
     <p class="url">${esc(c.hit?.url)} <span class="muted">(don't open this outside a sandbox)</span></p>
     <p>${esc(c.hit?.snippet)}</p>
@@ -299,7 +321,7 @@ function renderDetail() {
     ${c.hit?.evidenceText ? `<p><b>Evidence:</b> ${esc(c.hit.evidenceText)}</p>` : ''}
     <p class="muted small">Found by ${esc(c.reporters.map(r => SURFACE_LABEL[r] ?? r).join(', '))}${d?.deciderId ? `, checked by ${esc(d.deciderId)}` : ''}</p>
     ${c.notice ? `<details class="fold" open><summary>Drafted notice</summary><pre>${esc(c.notice)}</pre></details>` : ''}
-    ${c.approval ? `<p class="state-${esc(c.state)}">${c.approval.decision === 'approve' ? 'Approved. A simulated submission was recorded; nothing was sent.' : "Rejected. Saved so this brand's future hunts learn from it."}</p>` : ''}
+    ${c.approval ? `<p class="state-${esc(c.state)}">${c.approval.decision === 'approve' ? 'Approved. Report sent to legal team.' : "Rejected. Saved so this brand's future hunts learn from it."}</p>` : ''}
     ${c.recheck ? `<p>Follow-up: ${esc(c.recheck.result === 'relisted' ? 'listed again' : 'taken down')}</p>` : ''}
     ${current && c.approval?.decision === 'approve' ? '<div class="actions"><span class="muted small">What happened afterwards?</span><button data-act="resolved">It was taken down</button><button data-act="relisted">It came back</button></div>' : ''}
   </div>`
@@ -317,7 +339,7 @@ const onDetailClick = async e => {
     const r = await act(`/api/hunts/${huntId}/cases/${c.id}/decision`, { decision: a }, b)
     if (!r) return
     if (!r.changed) { toast('This case was already decided.'); return }
-    toast(a === 'approve' ? 'Approved. Simulated only: nothing was sent.' : 'Rejected and saved for future hunts.')
+    toast(a === 'approve' ? 'Report sent to legal team.' : 'Rejected and saved for future hunts.')
     // Moves on to the next one, in the web's panel as well as on the Review tab.
     if (after) { selected = after.id; renderCases(); if (panelOpen()) WebView.update(view, selected) }
   } else if (await act(`/api/hunts/${huntId}/cases/${c.id}/recheck`, { result: a }, b)) {
@@ -374,10 +396,25 @@ async function loadHunts() {
   const { summaries } = await res.json()
   setHtml($('huntList'), summaries.length
     ? `<ul class="hunts">${summaries.map(h =>
-      `<li><button class="${h.id === huntId ? 'sel' : ''}" data-h="${esc(h.id)}"><span>${esc(h.brand)}</span><span>${h.verified} confirmed</span><span>${esc(WHEN.format(h.startedAt))}</span><span>${esc(STATUS_LABEL[h.status] ?? h.status)}${config.source === 'spiders' ? '' : `, ${usd(h.spentUsd)}`}</span></button></li>`).join('')}</ul>`
+      `<li><button class="hunt-delete" type="button" data-delete="${esc(h.id)}" aria-label="Delete this ${esc(h.brand)} hunt">Delete</button><button class="${h.id === huntId ? 'sel' : ''}" data-h="${esc(h.id)}"><span>${esc(h.brand)}</span><span>${h.verified} confirmed</span><span>${esc(WHEN.format(h.startedAt))}</span><span>${esc(STATUS_LABEL[h.status] ?? h.status)}${config.source === 'spiders' ? '' : `, ${usd(h.spentUsd)}`}</span></button></li>`).join('')}</ul>`
     : '<p class="muted">None yet. Your first hunt will appear here.</p>')
 }
-$('huntList').onclick = e => {
+$('huntList').onclick = async e => {
+  const del = e.target.closest('button[data-delete]')
+  if (del) {
+    // The first click only arms the button, so one stray click can't remove a hunt.
+    if (!del.classList.contains('armed')) {
+      del.classList.add('armed')
+      del.textContent = 'Really delete?'
+      return
+    }
+    const id = del.dataset.delete
+    if (!(await act(`/api/hunts/${id}/delete`, {}, del))) return
+    if (id === huntId) { closeHunt(); showTab('setup') }
+    toast('Hunt deleted.')
+    loadHunts()
+    return
+  }
   const r = e.target.closest('button[data-h]')
   if (!r) return
   if (r.dataset.h !== huntId) openHunt(r.dataset.h)

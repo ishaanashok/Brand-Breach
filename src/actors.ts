@@ -156,6 +156,7 @@ export class Playbook extends Actor {
   async update(lane: string, d: LaneStat): Promise<null> { return this.#run(playbook.update(this.s, lane, d)) }
   async getPriors(): Promise<Record<string, LaneStat>> { return this.#run(playbook.getPriors(this.s)) }
   async registerHunt(id: string): Promise<null> { return this.#run(playbook.registerHunt(this.s, id)) }
+  async forgetHunt(id: string): Promise<null> { return this.#run(playbook.forgetHunt(this.s, id)) }
   async listHunts(): Promise<string[]> { return this.#run(playbook.listHunts(this.s)) }
   async adopt(source: string, other: PlaybookState): Promise<boolean> { return this.#run(playbook.adopt(this.s, source, other)) }
   async getCommentary(): Promise<string[]> { return this.#run(playbook.getCommentary(this.s)) }

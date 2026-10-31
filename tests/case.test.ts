@@ -91,4 +91,5 @@ test('playbook lists active hunts so a restarted server can resume them', () => 
   let p = playbook.registerHunt(initialPlaybook(), 'h1')[0]
   p = playbook.registerHunt(p, 'h1')[0]
   expect(playbook.listHunts(p)[1]).toEqual(['h1'])
+  expect(playbook.listHunts(playbook.forgetHunt(p, 'h1')[0])[1]).toEqual([])
 })

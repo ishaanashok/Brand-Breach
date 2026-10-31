@@ -221,8 +221,9 @@ export class HuntRunner {
     const c = await kase.snapshot()
     const hunt = store.hunt(this.huntId)
     await hunt.bump(decision === 'approve' ? 'approved' : 'rejected')
-    await hunt.log(`${decision === 'approve' ? 'Approved, simulated submit only' : 'Rejected'}: ${c.hit!.url}`, Date.now())
-    const brand = store.brand(this.brandSlug)
+    await hunt.log(`${decision === 'approve' ? 'Approved, report sent to legal team' : 'Rejected'}: ${c.hit!.url}`, Date.now())
+    // The case names its brand, because a runner rebuilt only to record a decision never launched.
+    const brand = store.brand(c.brand)
     await brand.addLabel({ caseId, url: c.hit!.url, decision, deciderId: c.verification?.deciderId ?? c.triage?.deciderId ?? 'unknown', score: c.verification?.score ?? 0, seller: c.hit!.seller })
     if (decision === 'reject' && c.hit!.lane) await brand.recordLaneOutcome(c.hit!.lane, { tries: 0, hits: -1, costUsd: 0 })
     // A runner rebuilt only to record a decision on a finished hunt never joined the bus.

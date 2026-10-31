@@ -29,6 +29,9 @@ export const playbook = {
   registerHunt(s: PlaybookState, id: string): Step<PlaybookState, null> {
     return s.hunts.includes(id) ? [s, null] : [v(s, { hunts: [...s.hunts, id] }), null]
   },
+  forgetHunt(s: PlaybookState, id: string): Step<PlaybookState, null> {
+    return [v(s, { hunts: s.hunts.filter(h => h !== id) }), null]
+  },
   listHunts(s: PlaybookState): Step<PlaybookState, string[]> {
     return [s, s.hunts]
   },

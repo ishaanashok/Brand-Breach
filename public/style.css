@@ -57,6 +57,16 @@ input, select { font: inherit; color: var(--ink); padding: 8px 11px; border: 1px
 .earlier { margin-top: 56px; }
 .earlier h2 { margin: 0 0 6px; font-size: 13px; color: var(--muted); font-weight: 500; }
 .hunts { list-style: none; margin: 0; padding: 0; }
+.hunts li { position: relative; }
+.hunts .hunt-delete { position: absolute; left: 50%; top: 50%; translate: -50% -50%; z-index: 1; width: auto; display: block; padding: 4px 10px; border: 1px solid var(--line); border-radius: 999px; background: var(--panel); color: var(--muted); font-size: 12px; opacity: 0; }
+.hunts li:hover .hunt-delete, .hunts .hunt-delete:focus-visible, .hunts .hunt-delete.armed { opacity: 1; }
+.hunts .hunt-delete:hover { color: var(--ink); }
+.hunts .hunt-delete.armed { color: #e5534b; border-color: #e5534b; }
+.image-pick input { position: absolute; width: 1px; height: 1px; opacity: 0; }
+.image-row { display: flex; align-items: center; gap: 10px; min-height: 36px; margin-top: 6px; }
+.button-like { padding: 6px 14px; border: 1px solid var(--line); border-radius: 999px; font-size: 13px; cursor: pointer; }
+.image-pick:focus-within .button-like, .button-like:hover { border-color: var(--ink); }
+.image-row img { width: 36px; height: 36px; object-fit: cover; border-radius: 6px; }
 .hunts button { width: 100%; display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 2px 14px; padding: 12px 2px; border: 0; border-top: 1px solid var(--line); border-radius: 0; text-align: left; }
 .hunts button:hover:not(:disabled), .hunts button.sel { background: var(--panel); }
 .hunts span:nth-child(2), .hunts span:nth-child(4) { text-align: right; color: var(--muted); font-size: 13px; }

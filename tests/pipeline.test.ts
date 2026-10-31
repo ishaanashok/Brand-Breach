@@ -329,3 +329,15 @@ test('a lane that only repeats itself stops being searched', async () => {
   await r.stop()
   expect(calls).toBe(seen)
 })
+
+test('a runner rebuilt after a restart still records a decision for the right brand', async () => {
+  const store = new MemoryStore()
+  const first = new HuntRunner('restarted', await deps(store))
+  await first.start(input)
+  await until(async () => (await store.hunt('restarted').snapshot()).status === 'done')
+  await first.stop()
+  const waiting = (await store.brandCases('tesla', 100)).find(c => c.state === 'awaiting_approval')!
+  const rebuilt = new HuntRunner('restarted', await deps(store))
+  expect((await rebuilt.decide(waiting.id, 'approve', 'reviewer')).changed).toBe(true)
+  expect((await store.brand('tesla').snapshot()).labels.map(l => l.caseId)).toContain(waiting.id)
+})

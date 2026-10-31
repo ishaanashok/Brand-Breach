@@ -171,6 +171,13 @@ export async function createServer(cfg: AppConfig): Promise<App> {
       return json({ lanes: Object.fromEntries(SURFACES.map(s => [s, source.lanes(s, v.hunt.input!.keywords).map(l => l.strategy)])) })
     }
 
+    if (rest === 'delete' && req.method === 'POST') {
+      // Takes the hunt off the list and stops it. What the brand learned from it stays for later hunts.
+      await runners.get(id)?.stop()
+      runners.delete(id)
+      await store.playbook().forgetHunt(id)
+      return json({ ok: true })
+    }
     const hunt = store.hunt(id)
     if (rest === 'control' && body) {
       const r = runners.get(id)
