@@ -32,7 +32,7 @@ function fromWire(a: any, q: Question, penalty: number): Answer {
 }
 
 /** Talks to the local sidecar described in sidecar/README.md. */
-export function layaDecider({ baseUrl = 'http://127.0.0.1:8765', fetch: f = fetch }: Opts = {}): Decider {
+export function layaDecider({ baseUrl = 'http://127.0.0.1:8000', fetch: f = fetch }: Opts = {}): Decider {
   const id = 'laya-local'
   return {
     id,
@@ -46,7 +46,7 @@ export function layaDecider({ baseUrl = 'http://127.0.0.1:8765', fetch: f = fetc
       const penalty = dropped ? NO_VISUAL_PENALTY : 1
       const answers: Answer[] = []
       for (const part of chunk(qs, MAX_QUESTIONS)) {
-        const res = await f(`${baseUrl}/predict`, {
+        const res = await f(`${baseUrl}/v1/systemone`, {
           method: 'POST',
           headers: { 'content-type': 'application/json' },
           body: JSON.stringify({ state, questions: Object.fromEntries(part.map(q => [q.name, toWire(q)])) }),
