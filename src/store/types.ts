@@ -19,5 +19,7 @@ export interface Store {
   /** Many cases in input order, in as few calls as the store allows. */
   cases(ids: string[]): Promise<CaseState[]>
   brand(slug: string): BrandClient
+  /** A brand's cases from any hunt, the ones flagged as abuse first. */
+  brandCases(slug: string, limit: number): Promise<CaseState[]>
   playbook(): PlaybookClient
 }

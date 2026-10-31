@@ -27,7 +27,6 @@ a { color: var(--ink); }
 .muted { color: var(--muted); }
 .error { color: var(--ink); font-weight: 600; margin: 8px 0 0; min-height: 1.2em; }
 .note { padding: 8px 20px; font-size: 14px; border-bottom: 1px solid var(--line); }
-.note.real { background: var(--ink); color: #000; }
 .empty { text-align: center; padding: 18vh 16px; }
 .empty h2 { font-size: 26px; font-weight: 500; letter-spacing: -.02em; margin: 0 0 6px; }
 .empty button { margin-top: 12px; }
@@ -84,6 +83,10 @@ body:has(.note:not([hidden])) .stage { height: calc(100dvh - var(--head) - 38px)
 .web-point.spider:hover svg { transform: scale(1.22); }
 .web-point.spider.state-awaiting_approval::after { content: ""; position: absolute; inset: 1px; border-radius: 50%; border: 1px solid rgba(255,255,255,.55); animation: ping 2.4s ease-out infinite; }
 .web-point.spider.state-approved svg { opacity: .55; }
+.web-point.earlier { opacity: .6; }
+.web-point.earlier:hover { opacity: 1; }
+.risk-scale { display: flex; align-items: center; gap: 6px; font-size: 12px; }
+.risk-scale i { width: 72px; height: 6px; border-radius: 3px; background: linear-gradient(90deg, hsl(120 85% 55%), hsl(60 85% 55%), hsl(0 85% 55%)); }
 .web-point.chosen::after { content: ""; position: absolute; inset: -2px; border-radius: 50%; border: 1.5px solid #fff; animation: none; }
 @keyframes settle { from { scale: .2; opacity: 0; } }
 @keyframes ping { from { scale: .75; opacity: 1; } to { scale: 1.4; opacity: 0; } }

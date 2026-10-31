@@ -1,4 +1,5 @@
-import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, readdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs'
+import type { CaseState } from '../core/machines/case'
 import { join } from 'node:path'
 import { brand, initialBrand } from '../core/machines/brand'
 import { kase, initialCase } from '../core/machines/case'
@@ -52,5 +53,12 @@ export class MemoryStore implements Store {
   kase = (id: string) => this.client(`case:${id}`, kase, initialCase)
   cases = (ids: string[]) => Promise.all(ids.map(id => this.kase(id).snapshot()))
   brand = (s: string) => this.client(`brand:${s}`, brand, initialBrand)
+  brandCases = async (s: string, limit: number) => {
+    const onDisk = this.dir ? readdirSync(this.dir).map(f => decodeURIComponent(f.replace(/\.json$/, ''))) : []
+    const keys = [...new Set([...this.states.keys(), ...onDisk])].filter(k => k.startsWith('case:'))
+    const all = await this.cases(keys.map(k => k.slice('case:'.length)))
+    const flagged = (c: CaseState) => (['verified', 'awaiting_approval', 'approved'].includes(c.state) ? 0 : 1)
+    return all.filter(c => c.brand === s).sort((a, b) => flagged(a) - flagged(b)).slice(0, limit)
+  }
   playbook = () => this.client('playbook:global', playbook, initialPlaybook)
 }

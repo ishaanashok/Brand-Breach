@@ -90,6 +90,10 @@ export class Brand extends Actor {
     return r
   }
   async caseSnapshots(ids: string[]): Promise<CaseState[]> { return ids.map(id => this.#case(id)) }
+  async someCases(limit: number): Promise<CaseState[]> {
+    this.#tables()
+    return this.db.exec<{ json: string }>(`SELECT json FROM cases ORDER BY json_extract(json, '$.state') IN ('verified', 'awaiting_approval', 'approved') DESC, id LIMIT ?`, limit).map(r => JSON.parse(r.json))
+  }
   /** Brings in cases kept elsewhere. A case already here wins, so an import can run again safely. */
   async adoptCases(cases: CaseState[]): Promise<number> {
     this.#tables()

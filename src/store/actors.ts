@@ -37,6 +37,7 @@ export async function actorStore(): Promise<Store> {
     kase,
     cases,
     brand: s => actors.Brand.get(s) as BrandClient,
+    brandCases: (s, limit) => actors.Brand.get(s).someCases(limit),
     playbook: () => actors.Playbook.get('global') as PlaybookClient,
   }
 }
