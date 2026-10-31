@@ -36,7 +36,7 @@ GET /api/brands/:slug/graph?node=<id>
 GET /api/brands/:slug/kb
 ```
 
-`POST` and `DELETE` on the `kb` route add or remove entries. Shared platforms get a 400.
+`POST` on the `kb` route adds or removes an entry: `{ "action": "add", "kind", "value" }` or `{ "action": "remove", "id" }`. Shared platforms get a 400.
 
 The dashboard's `public/graph.js` draws it with a hand-written force layout on canvas, so it needs no library. It settles 220 ticks before first paint so the demo doesn't open on a tangle.
 
