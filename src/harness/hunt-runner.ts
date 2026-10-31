@@ -101,9 +101,7 @@ export class HuntRunner {
     this.scouts = SURFACES.map(s => new Scout(s, common, lanes[s]))
     await Promise.all(this.scouts.map(s => s.connect()))
     if (!announce) await this.recoverStranded()
-    for (const s of this.scouts) {
-      this.loops.push(s.run().catch(err => store.hunt(this.huntId).log(`${s.name} crashed: ${err}`, Date.now())))
-    }
+    for (const s of this.scouts) this.loops.push(this.superviseScout(s))
     // Scouts take their lane from the Hunt actor, so ASSIGN only announces it. A resume stays silent.
     if (announce) for (const s of SURFACES) await orchestratorMe.send(`@${s}`, encodeTag('ASSIGN', { lane: lanes[s], budgetSliceUsd: input.budgetUsd / SURFACES.length }))
 
@@ -120,11 +118,26 @@ export class HuntRunner {
     })
   }
 
-  private async recoverStranded() {
+  /** A scout holds nothing worth keeping, so losing the actor runtime for a while costs only the time. */
+  private async superviseScout(s: Scout) {
+    const hunt = this.d.store.hunt(this.huntId)
+    while (!this.stopped) {
+      try {
+        await s.run()
+        return
+      } catch (err) {
+        await hunt.log(`${s.name} crashed, restarting: ${err}`, Date.now()).catch(() => {})
+        await Bun.sleep(this.d.timing.tickMs)
+        await this.recoverStranded(s.name).catch(() => {})
+      }
+    }
+  }
+
+  private async recoverStranded(surface?: Surface) {
     const { caseIds } = await this.d.store.hunt(this.huntId).snapshot()
     const cases = await Promise.all(caseIds.map(id => this.d.store.kase(id).snapshot()))
-    const stranded = cases.filter(c => c.state === 'new')
-    if (stranded.length) await this.d.store.hunt(this.huntId).log(`Recovering ${stranded.length} cases left untriaged by a restart`, Date.now())
+    const stranded = cases.filter(c => c.state === 'new' && (!surface || c.hit!.surface === surface))
+    if (stranded.length) await this.d.store.hunt(this.huntId).log(`Recovering ${stranded.length} cases left untriaged by a crash`, Date.now())
     for (const c of stranded) await this.scouts.find(s => s.name === c.hit!.surface)?.recover(c)
   }
 

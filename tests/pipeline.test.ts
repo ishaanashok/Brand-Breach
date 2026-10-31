@@ -151,6 +151,23 @@ test('restart: a case reported but never triaged before the crash still gets tri
   await r2.stop()
 })
 
+test('a scout that loses the store for a moment comes back and the hunt finishes', async () => {
+  const store = new MemoryStore()
+  const realHunt = store.hunt.bind(store)
+  let failures = 5
+  store.hunt = id => {
+    const h = realHunt(id)
+    return new Proxy(h, { get: (t, k) => k === 'snapshot' && failures-- > 0 && failures < 3 ? () => Promise.reject(new Error('actor host is unavailable')) : (t as any)[k]?.bind?.(t) ?? (t as any)[k] })
+  }
+  const r = new HuntRunner('h9', await deps(store))
+  await r.start(input)
+  expect(await until(async () => (await realHunt('h9').snapshot()).status === 'done')).toBe(true)
+  await r.stop()
+  const h = await realHunt('h9').snapshot()
+  expect(h.events.some(e => e.text.includes('crashed, restarting'))).toBe(true)
+  expect(h.caseIds.length).toBeGreaterThan(10)
+})
+
 test('second run remembers lanes and reaches a verified finding for less', async () => {
   const store = new MemoryStore()
   // The verifier must outpace scouts here, or spend at first finding only measures timer order.
