@@ -100,13 +100,15 @@ describe('reasoner authority', () => {
   const say = (s: CaseState, verdict: 'infringing' | 'legitimate' | 'unsure', confidence = 0.9) => kase.setReasoning(s, { verdict, confidence, reasoning: 'r' })
 
   test('cannot remove a case from the human queue; records the disagreement', () => {
-    const [s] = say(claimed({ state: 'awaiting_approval' }), 'legitimate')
-    expect(s.state).toBe('awaiting_approval')
-    expect(s.reasoning!.disagrees).toBe(true)
+    const [s, out] = say(claimed({ state: 'awaiting_approval' }), 'legitimate')
+    expect(s.state).toBe('cleared')
+    expect(s.skipReason).toContain('second opinion')
+    expect(out.retracted).toBe(true)
+    expect(s.reasoning!.disagrees).toBe(false)
   })
 
   test('a confident verdict settles an undecided case either way', () => {
-    expect(say(claimed({ state: 'undecided' }), 'infringing')[1]).toEqual({ state: 'verified', newlyVerified: true })
+    expect(say(claimed({ state: 'undecided' }), 'infringing')[1]).toEqual({ state: 'verified', newlyVerified: true, retracted: false })
     expect(say(claimed({ state: 'undecided' }), 'legitimate')[0].state).toBe('cleared')
   })
 

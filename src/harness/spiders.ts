@@ -1,7 +1,7 @@
 import { canonicalUrl } from '../core/canonical'
 import type { Hit, Lane, Lead, Surface } from '../core/types'
 import type { OnHits, SearchResult, Source } from './source'
-import { readPage, searchDegraded, webSearch, type Page, type SearchItem } from './web'
+import { readPage, readProblem, searchDegraded, webSearch, type Page, type SearchItem } from './web'
 
 export type NimConfig = {
   apiKey: string; baseUrl?: string; model?: string; timeoutMs?: number; retries?: number
@@ -362,7 +362,7 @@ export function spiderSource(o: Omit<SpiderOpts, 'onActivity'> & { onActivity?: 
       return now() - lastWork >= IDLE_MS ? 'no agent has anywhere new to look' : null
     },
     // A spent lane reports nothing, so the orchestrator moves its scout on and the hunt can end.
-    capture: url => (o.read ?? readPage)(url).then(p => p.text.slice(0, EVIDENCE) || undefined).catch(() => undefined),
+    capture: url => (o.read ?? readPage)(url).then(p => ({ text: p.text.slice(0, EVIDENCE) })).catch(err => ({ problem: readProblem(err) })),
     async search(lane, onHits) {
       if (windingDown()) return { hits: [], usd: 0 }
       const key = `${lane.source}/${lane.strategy}`

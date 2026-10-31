@@ -154,5 +154,8 @@ export class Playbook extends Actor {
   async registerHunt(id: string): Promise<null> { return this.#run(playbook.registerHunt(this.s, id)) }
   async listHunts(): Promise<string[]> { return this.#run(playbook.listHunts(this.s)) }
   async adopt(source: string, other: PlaybookState): Promise<boolean> { return this.#run(playbook.adopt(this.s, source, other)) }
+  async getCommentary(): Promise<string[]> { return this.#run(playbook.getCommentary(this.s)) }
+  async addCommentary(raw: string): Promise<boolean> { return this.#run(playbook.addCommentary(this.s, raw)) }
+  async removeCommentary(entry: string): Promise<null> { return this.#run(playbook.removeCommentary(this.s, entry)) }
   async snapshot(): Promise<PlaybookState> { return this.s }
 }

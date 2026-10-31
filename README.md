@@ -102,6 +102,12 @@ The budget is a spending limit for one hunt, not money you pay into Customs. Bef
 
 The dashboard says which case applies. The limit stops new spending, but it is only as accurate as the provider prices in the code, and the reasoner prices are placeholders. Set a spending cap in your OpenAI account too.
 
+## What stays out of the queue
+
+- **Pages about scams:** warnings, news, scam checkers and forum threads are cleared with a reason, and stay under "Not flagged" for a person to check. A shared list on the Playbook actor catches known sites for free, and a question to the classifier catches the rest. The list never covers a whole shared platform: `reddit.com/r/scams` is fine, `reddit.com` isn't.
+- **Pages nobody could read:** a page that blocks readers, needs a browser or no longer exists goes under "Couldn't read", with no score. If the search result had a real title or snippet, that is judged instead, and the reason says the page itself wasn't read.
+- **Coin flips:** a page needs a score of at least 0.6 to reach a person. The classifier answers about 0.5 when it has nothing to go on.
+
 ## Tests
 
 ```bash
@@ -121,6 +127,7 @@ bun run check
 | Test suite and types | `bun test`, `tsc` | 138 pass, clean |
 | Case dedupe, grouped cases and no budget overshoot | `verify-actors.ts` on real actors | 1 first and 4 duplicates, 600 of 600 cases kept, 0 overshoot |
 | Full hunt on real actors and real Relay | New Balance, Luna and Decisions, $0.50 budget | Stopped at its limit at $0.43: 542 pages, 76 awaiting review, 4 steers, 2 reasoners, about 20 actor processes, no errors. The longest wait for the hunt view was about 15s, during bursts of new pages |
+| Review queue accuracy | Labelled set in `tests/fixtures/queue-labels.md`, real Decisions calls | 65 of 65 scam articles kept out, 30 of 33 real abuse pages with text kept in, 0 queue items at 45-55% |
 | `kill -9` of the server mid-hunt | Real stack, before cases were grouped | Resumes, and triages cases the crash stranded |
 | `kill -9` of the actor runtime mid-hunt | Real stack, before cases were grouped | State kept, scouts restart, hunt finishes |
 | Laya wire format | Sidecar 0.4.18 against the tape | Median 61ms, p95 473ms, triage 25/27 on synthetic data |
@@ -128,7 +135,7 @@ bun run check
 
 ## What has not been verified
 
-- **Classifier accuracy on the real web:** see the hunt in the table above. Laya flagged pages that warn about scams as well as scams, so a human decision still matters.
+- **Classifier accuracy on the real web:** measured only against the labelled pages in [tests/fixtures/queue-labels.md](tests/fixtures/queue-labels.md), and those labels are judgement calls. Run `bun --env-file=.env scripts/eval-queue.ts` to measure again.
 - **OpenAI prices:** the Decisions API, Luna and web search have run for real, but the prices come from resellers and may differ from OpenAI's bill.
 - **Reasoning quality:** knowledge bases and verdicts now come from Luna, but nobody has checked how accurate they are.
 - **Reasoner disagreement in the UI:** the machine and tests cover it, but no browser run produced one.

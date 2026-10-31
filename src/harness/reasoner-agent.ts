@@ -42,6 +42,11 @@ export async function runReasoner(d: ReasonerAgentDeps, c: CaseState, trigger: E
       await d.me.send(REVIEW_CHANNEL, encodeTag('REVIEW', { caseId: c.id })).catch(() => {})
       if (hit.lane) await brand.recordLaneOutcome(hit.lane, { tries: 0, hits: 1 - (c.triage?.score ?? 0), costUsd: res.usage.usd })
     }
+    if (out.retracted) {
+      await hunt.bump('verified', -1)
+      await hunt.bump('cleared')
+      if (hit.lane) await brand.recordLaneOutcome(hit.lane, { tries: 0, hits: -1, costUsd: res.usage.usd })
+    }
     await brand.markSeen(hit.url, { score: res.confidence, state: out.state }, d.huntId, Date.now())
     const outcome = `${res.verdict} (${res.confidence.toFixed(2)})`
     await hunt.finishSpawn(d.agent, c.id, outcome, Date.now())

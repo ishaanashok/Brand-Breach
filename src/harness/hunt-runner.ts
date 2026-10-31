@@ -2,7 +2,8 @@ import { REASONER_STALE_MS, type Escalation } from '../core/escalate'
 import { rankLanes } from '../core/lanes'
 import type { CaseState } from '../core/machines/case'
 import { DEFAULT_THRESHOLD } from '../core/machines/brand'
-import { thresholdFor } from '../core/policy'
+import { earnsReading, thresholdFor } from '../core/policy'
+import { hasReadableEvidence } from '../core/questions'
 import { encodeTag, parseTag } from '../core/tags'
 import { SURFACES, laneKey, slug, type Decider, type HuntInput, type Lane, type Surface } from '../core/types'
 import { HUNT_CHANNEL, REVIEW_CHANNEL, type Bus, type Participant } from '../relay/types'
@@ -192,8 +193,8 @@ export class HuntRunner {
     if (remaining < this.d.verifyEstUsd) return false
     const { thresholds } = await this.d.store.brand(this.brandSlug).summary()
     const cases = await this.d.store.cases(h.caseIds)
-    const earns = (score: number, deciderId: string) => score >= thresholdFor(thresholds[deciderId] ?? DEFAULT_THRESHOLD, this.input.precision)
-    return cases.some(c => c.state === 'shortlisted' || (c.state === 'triaged' && earns(c.triage!.score, c.triage!.deciderId)))
+    const earns = (c: CaseState) => earnsReading(c.triage!.score, thresholdFor(thresholds[c.triage!.deciderId] ?? DEFAULT_THRESHOLD, this.input.precision), hasReadableEvidence(c.hit!))
+    return cases.some(c => c.state === 'shortlisted' || (c.state === 'triaged' && earns(c)))
   }
 
   private every(ms: number, fn: () => Promise<unknown>) {

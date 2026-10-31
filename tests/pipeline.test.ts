@@ -254,7 +254,7 @@ test('knowledge base clears the real presences, and later hunts reuse it for fre
   expect((await kase('https://chirp.example/tesla/status/7')).skipReason).toContain('knowledge base')
   expect((await kase('https://shopnow.example/store/tesla-official/wall-connector')).skipReason).toContain('knowledge base')
   // Below the bar, so it is only a candidate and still gets examined.
-  expect((await kase('https://teslaforum.example')).skipReason).toBeNull()
+  expect((await kase('https://teslaforum.example')).skipReason ?? '').not.toContain('knowledge base')
   const r2 = new HuntRunner('kb2', await deps(store, { reasoner }, 2))
   await r2.start(input)
   expect(await until(async () => (await store.hunt('kb2').snapshot()).status === 'done', 8000)).toBe(true)
