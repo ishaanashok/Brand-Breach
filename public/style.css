@@ -179,7 +179,8 @@ tr.click:hover, tr.sel { background: var(--raised); }
 .kb-rows li.kb-pattern::before { content: "!"; left: 4px; font-weight: 700; color: #e5534b; }
 .kb-shots { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
 .kb-shot { margin: 0; padding: 8px; border: 1px solid var(--line); border-radius: 10px; font-size: 12px; animation: kb-in .3s ease-out; }
-.kb-shot svg { display: block; width: 100%; height: 76px; }
+.kb-shot img { display: block; width: 100%; height: 118px; object-fit: cover; border-radius: 5px; background: #111; }
+.kb-shot img.whole { object-fit: contain; background: #fff; }
 .kb-shot figcaption { margin-top: 4px; }
 .kb-shot small { display: block; font-size: 11px; }
 @keyframes kb-in { from { opacity: 0; transform: translateY(5px); } }

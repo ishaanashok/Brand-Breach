@@ -30,15 +30,12 @@
       ],
     },
     {
-      title: 'Reference imagery', kind: 'watches', items: [
-        { name: 'Submariner', ref: '126610LN', bezel: '#111', dial: '#0b0b0b', band: '#a9adb2' },
-        { name: 'Submariner Date', ref: '126610LV', bezel: '#0c6b3c', dial: '#0b0b0b', band: '#a9adb2' },
-        { name: 'GMT-Master II', ref: '126710BLRO', bezel: 'split', dial: '#0b0b0b', band: '#a9adb2' },
-        { name: 'Daytona', ref: '126500LN', bezel: '#111', dial: '#eceae4', band: '#a9adb2' },
-        { name: 'Datejust 41', ref: '126334', bezel: '#d4d6d9', dial: '#23406e', band: '#a9adb2' },
-        { name: 'Day-Date 40', ref: '228238', bezel: '#d6b25e', dial: '#d6b25e', band: '#c9a54e' },
-        { name: 'Explorer', ref: '224270', bezel: '#b9bcc0', dial: '#0b0b0b', band: '#a9adb2' },
-        { name: 'Yacht-Master', ref: '226659', bezel: '#111', dial: '#0b0b0b', band: '#2a2a2a' },
+      title: 'Reference imagery', kind: 'images', items: [
+        { name: 'Submariner Date, blue and gold', note: 'Campaign image', src: 'rolex/submariner-blue.webp' },
+        { name: 'Coronet and wordmark', note: 'Brand mark', src: 'rolex/logo.png', whole: true },
+        { name: 'Submariner Date, black', note: 'Product detail', src: 'rolex/submariner-black.webp' },
+        { name: 'Advertising brochure', note: 'Archive print', src: 'rolex/brochure.png' },
+        { name: 'Day-Date, blue dial', note: 'Campaign image', src: 'rolex/day-date.webp' },
       ],
     },
     {

@@ -203,21 +203,16 @@ const KbIntro = (() => {
   const ROW_MS = 340
   const END_MS = 1100
   const esc = s => String(s).replace(/[&<>"']/g, ch => `&#${ch.charCodeAt(0)};`)
-  const watch = w => {
-    const bezel = w.bezel === 'split'
-      ? '<path d="M18 40a22 22 0 0 1 44 0z" fill="#b3202a"/><path d="M18 40a22 22 0 0 0 44 0z" fill="#1c3f94"/>'
-      : `<circle cx="40" cy="40" r="22" fill="${w.bezel}"/>`
-    const ticks = Array.from({ length: 12 }, (_, i) => `<rect x="39.4" y="24" width="1.2" height="3" fill="#fff" transform="rotate(${i * 30} 40 40)"/>`).join('')
-    return `<svg viewBox="0 0 80 80" aria-hidden="true"><rect x="28" y="0" width="24" height="80" rx="3" fill="${w.band}"/><circle cx="40" cy="40" r="24" fill="#d4d6d9"/>${bezel}<circle cx="40" cy="40" r="17" fill="${w.dial}" stroke="#333" stroke-width=".5"/>${ticks}<path d="M40 40V27M40 40l8 5" stroke="#fff" stroke-width="1.6" stroke-linecap="round"/><path d="M36.5 31l1 2.6h5l1-2.6-1.8 1.2L40 30l-1.700 2.200z" fill="#d6b25e"/></svg>`
-  }
   const renderItem = (kind, item) => {
-    if (kind === 'watches') return `<figure class="kb-shot">${watch(item)}<figcaption>${esc(item.name)}<small>rolex.com · ${esc(item.ref)}</small></figcaption></figure>`
+    if (kind === 'images') return `<figure class="kb-shot"><img src="${esc(item.src)}" alt="${esc(item.name)}"${item.whole ? ' class="whole"' : ''}><figcaption>${esc(item.name)}<small>${esc(item.note)}</small></figcaption></figure>`
     return `<li class="${kind === 'patterns' ? 'kb-pattern' : ''}">${esc(item)}</li>`
   }
 
   function play(root) {
     const sections = RolexKb.GATHER
     const phrases = RolexKb.PHRASES
+    // Fetched up front, so that each image is ready the moment its turn comes.
+    for (const s of sections) if (s.kind === 'images') for (const item of s.items) new Image().src = item.src
     // Takes turns between sections, so that all of them fill at the same time and finish together.
     const steps = sections.flatMap((s, i) => s.items.map((item, n) => ({ i, s, item, turn: (n + 0.5) / s.items.length })))
       .sort((a, b) => a.turn - b.turn || a.i - b.i)
@@ -225,7 +220,7 @@ const KbIntro = (() => {
         <p id="kbIntroLine" class="muted"></p></div><button id="kbIntroSkip" type="button">Skip</button></div>
       <div class="kb-bar"><i id="kbIntroBar"></i></div>
       <div class="kb-intro-grid">${sections.map((s, i) => `<section class="kb-col" data-col="${i}"><h3>${esc(s.title)}</h3>
-        ${s.kind === 'watches' ? '<div class="kb-shots"></div>' : '<ul class="kb-rows"></ul>'}</section>`).join('')}</div>`
+        ${s.kind === 'images' ? '<div class="kb-shots"></div>' : '<ul class="kb-rows"></ul>'}</section>`).join('')}</div>`
     root.hidden = false
     return new Promise(resolve => {
       let timer
