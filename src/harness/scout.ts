@@ -1,6 +1,7 @@
 import { canonicalUrl } from '../core/canonical'
 import { caseId } from '../core/case-id'
 import { kbEntities, matchKb } from '../core/kb'
+import type { CaseState } from '../core/machines/case'
 import type { SteerKind } from '../core/machines/hunt'
 import { hitText, summarize, triageQuestions } from '../core/questions'
 import { rulesCheck, type RuleContext } from '../core/rules'
@@ -126,16 +127,27 @@ export class Scout {
     await this.hunt.addCase(id)
     await this.me.send(HUNT_CHANNEL, encodeTag('NEW', { caseId: id, url, lane: hit.lane })).catch(() => {})
     if (hit.seller) await this.brand.addEdges([{ from: `listing:${url}`, to: `seller:${hit.seller}`, kind: 'sold_by' }])
+    await this.assess(id, hit, url)
+    return true
+  }
 
+  /** A crash can land between reporting a case and triaging it, and a later report is only a duplicate. */
+  async recover(c: CaseState) {
+    const b = await this.brand.snapshot()
+    this.rules.whitelist = b.whitelist
+    this.rules.kb = kbEntities(b)
+    await this.assess(c.id, c.hit!, c.hit!.url)
+  }
+
+  private async assess(id: string, hit: Hit, url: string) {
     const rule = rulesCheck(hit, this.rules)
     if (rule.skip) {
       await this.d.store.kase(id).skip(rule.skip)
       await this.hunt.bump('skipped')
-      return true
+      return
     }
     await this.triage(id, hit, rule.priceFlag)
     for (const lead of hit.leads ?? []) await this.shareLead(lead, url)
-    return true
   }
 
   private async triage(id: string, hit: Hit, priceFlag: boolean) {

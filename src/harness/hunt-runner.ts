@@ -100,6 +100,7 @@ export class HuntRunner {
     const common = { huntId: this.huntId, input, brandSlug: this.brandSlug, store, bus, source: this.d.source, triage: this.d.triage, delayMs: this.d.timing.scoutDelayMs }
     this.scouts = SURFACES.map(s => new Scout(s, common, lanes[s]))
     await Promise.all(this.scouts.map(s => s.connect()))
+    if (!announce) await this.recoverStranded()
     for (const s of this.scouts) {
       this.loops.push(s.run().catch(err => store.hunt(this.huntId).log(`${s.name} crashed: ${err}`, Date.now())))
     }
@@ -117,6 +118,14 @@ export class HuntRunner {
         if (h.status === 'running') await store.hunt(this.huntId).setStatus('done')
       }
     })
+  }
+
+  private async recoverStranded() {
+    const { caseIds } = await this.d.store.hunt(this.huntId).snapshot()
+    const cases = await Promise.all(caseIds.map(id => this.d.store.kase(id).snapshot()))
+    const stranded = cases.filter(c => c.state === 'new')
+    if (stranded.length) await this.d.store.hunt(this.huntId).log(`Recovering ${stranded.length} cases left untriaged by a restart`, Date.now())
+    for (const c of stranded) await this.scouts.find(s => s.name === c.hit!.surface)?.recover(c)
   }
 
   /** The orchestrator's call: a short-lived agent with its own place on the bus and its own budget hold. */

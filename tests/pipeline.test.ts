@@ -136,6 +136,21 @@ test('restart: a new runner resumes the hunt with lanes and cases intact', async
   expect(after.counters.seen).toBeGreaterThanOrEqual(before.counters.seen)
 })
 
+test('restart: a case reported but never triaged before the crash still gets triaged', async () => {
+  const store = new MemoryStore()
+  const r1 = new HuntRunner('h8', await deps(store))
+  await r1.start(input)
+  await until(async () => (await store.hunt('h8').snapshot()).counters.seen > 0)
+  await r1.stop()
+  const hit = { url: 'https://stranded.example/free-tesla', surface: 'domains' as const, title: 'Free Tesla giveaway', snippet: 'Send crypto, claim your Tesla', lane: 'domains/x' }
+  await store.kase('stranded').report('stranded', 'tesla', 'h8', hit, 'domains', Date.now())
+  await store.hunt('h8').addCase('stranded')
+  const r2 = new HuntRunner('h8', await deps(store))
+  await r2.resume()
+  expect((await store.kase('stranded').snapshot()).state).not.toBe('new')
+  await r2.stop()
+})
+
 test('second run remembers lanes and reaches a verified finding for less', async () => {
   const store = new MemoryStore()
   // The verifier must outpace scouts here, or spend at first finding only measures timer order.
