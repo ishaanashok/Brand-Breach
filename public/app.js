@@ -77,7 +77,7 @@ $('form').onsubmit = async e => {
   try {
     const res = await post('/api/hunts', {
       brand: f.get('brand'), keywords: list(f.get('keywords')).length ? list(f.get('keywords')) : [f.get('brand').trim()], officialDomains: list(f.get('officialDomains')),
-      authorizedSellers: list(f.get('authorizedSellers')), budgetUsd: Number(f.get('budgetUsd')), ...(limitsSearches() ? { maxSearches: Number(f.get('maxSearches')) } : {}), precision: f.get('precision'),
+      authorizedSellers: list(f.get('authorizedSellers')), budgetUsd: Number(f.get('budgetUsd')), precision: f.get('precision'),
     })
     const body = await res.json()
     if (!res.ok) { $('formError').textContent = body.error; return }
@@ -141,9 +141,9 @@ function renderHud(h) {
   $('webLine').textContent = `${state}. ${view.cases.length} ${view.cases.length === 1 ? 'site' : 'sites'}, ${spiders} ${spiders === 1 ? 'spider' : 'spiders'}.`
   const searching = config.source === 'spiders'
   $('webSpend').textContent = searching
-    ? `${h.counters.searches ?? 0} of ${h.input.maxSearches ?? 40} searches used.`
+    ? `${searchCount(h)} so far.`
     : config.source === 'luna'
-    ? `${h.counters.searches ?? 0} of ${h.input.maxSearches ?? 40} searches, ${usd(h.spent)} of ${usd(h.input.budgetUsd)} used. ${costNote()}`
+    ? `${searchCount(h)}, ${usd(h.spent)} of ${usd(h.input.budgetUsd)} used. ${costNote()}`
     : `${usd(h.spent)} of ${usd(h.input.budgetUsd)} used. ${costNote()}`
   const finished = h.status === 'done'
   $('pause').hidden = finished
@@ -323,7 +323,7 @@ $('export').onclick = async () => {
   toast('Report downloaded.')
 }
 
-const limitsSearches = () => ['spiders', 'luna'].includes(config.source)
+const searchCount = h => `${h.counters.searches ?? 0} ${h.counters.searches === 1 ? 'search' : 'searches'}`
 const costNote = () => (config.billed.length ? 'Real money.' : config.source === 'tape' ? 'Simulated.' : 'No charge counted: NIM credits and local Laya.')
 
 function renderBilling() {
@@ -332,7 +332,6 @@ function renderBilling() {
   if (!real && config.source === 'tape') $('billingNote').innerHTML = '<b>Recorded demo.</b> These results come from a made-up tape, not the web. Set NIM_API_KEY to search for real.'
   $('billingNote').classList.toggle('real', real)
   if (real) $('billingNote').innerHTML = `<b>Real money.</b> ${esc(config.billed.join(', '))} ${config.billed.length === 1 ? 'is' : 'are'} charged by OpenAI to the account of the configured API key. Customs stops at your limit, but set a cap in your OpenAI account too.`
-  $('searchLimit').hidden = !limitsSearches()
   if (config.source === 'luna') document.querySelector('[name=budgetUsd]').value = '1.00'
   $('spendLimit').hidden = config.source === 'spiders'
   $('budgetHelp').textContent = real

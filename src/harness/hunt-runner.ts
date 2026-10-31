@@ -122,7 +122,7 @@ export class HuntRunner {
       const now = await store.hunt(this.huntId).snapshot()
       if (now.status === 'paused') this.d.source.touch?.()
       const over = this.d.source.over?.() ?? null
-      if (n === 0 && !this.reasoners.size && (over ? !(await this.hasUnclassified()) : await orch.finished()) && !(await this.hasTriaged()) && !(await orch.escalations()).length) {
+      if (n === 0 && !this.reasoners.size && (over ? !(await this.hasUnclassified()) : !this.d.source.busy?.() && await orch.finished()) && !(await this.hasTriaged()) && !(await orch.escalations()).length) {
         const h = await store.hunt(this.huntId).snapshot()
         if (h.status !== 'running') return
         const caveat = this.d.source.caveat?.()

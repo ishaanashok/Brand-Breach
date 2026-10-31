@@ -5,7 +5,7 @@ export type SearchResult = {
   /** Links found on pages that were already sent on by OnHits. */
   leads?: { lead: Lead; from: string }[]
 }
-/** Takes hits as soon as they're found, and says how many were new. */
+/** Takes hits as soon as they're found, and says how many new ones look worth a closer look. */
 export type OnHits = (hits: Hit[]) => Promise<number>
 
 /** Live and recorded sources share this type, so the pipeline cannot tell them apart. */
@@ -25,6 +25,8 @@ export interface Source {
   capture?(url: string): Promise<string | undefined>
   /** Anything that limited this hunt's results, for its last line. */
   caveat?(): string | null
+  /** An agent is out, or only just came back and may have left a lead for another to follow. */
+  busy?(): boolean
   /** Paused time doesn't count as having nothing to do. */
   touch?(): void
 }

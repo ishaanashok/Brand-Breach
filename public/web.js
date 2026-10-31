@@ -4,11 +4,12 @@
 ;(() => {
   const SURFACES = ['social', 'marketplace', 'video', 'domains', 'channels']
   const AGENT_LABEL = { social: 'Social media', marketplace: 'Marketplaces', video: 'Video sites', domains: 'Websites', channels: 'Group chats' }
-  const RADIALS_PER_SURFACE = 3
+  const RADIALS_PER_SURFACE = 6
   const SPREAD_RINGS = 6 // Listings scatter over this many rings, so spiders don't bunch up.
   const AMBIENT_RINGS = 8
-  const FAR = 2600
+  const MIN_SCALE = 0.03, MAX_SCALE = 5, ZOOM_STEP = 1.35
   const SILK_PER_ACTION = 3
+  const CATCH_UP_PER_STRETCH = 10
   const hash = s => {
     let h = 2166136261
     for (const ch of String(s)) { h ^= ch.charCodeAt(0); h = Math.imul(h, 16777619) }
@@ -31,7 +32,7 @@
       const radial = radials[r]
       while (radial.knots.length <= k) {
         const ring = radial.knots.length
-        const reach = (radial.knots[ring - 1]?.reach ?? 30) + 40 + noise(seed, 'gap', r, ring) * 34
+        const reach = (radial.knots[ring - 1]?.reach ?? 30) + 28 + noise(seed, 'gap', r, ring) * 20
         const angle = radial.angle + (noise(seed, 'bend', r, ring) - 0.5) * 0.09
         radial.knots.push({ id: `${r}/${ring}`, radial: r, ring, reach, x: Math.cos(angle) * reach, y: Math.sin(angle) * reach, woven: false, caseId: null })
       }
@@ -71,7 +72,9 @@
   let canvas, ctx, overlay, onPick
   let layout, edges, built, adjacency, agents, points, seed, status, started, seen, cases, seenEvents
   let visible = false, frame = 0, last = 0, hover = false, topRing = 0
-  let cam = { x: 0, y: 0, s: 1 }, inset = 0, width = 0, height = 0
+  let cam = { x: 0, y: 0, s: 1 }, inset = 0, width = 0, height = 0, autoFit = true, drawnCam = ''
+  const pointers = new Map()
+  let pinch = 0
   const calm = () => matchMedia('(prefers-reduced-motion: reduce)').matches
 
   function init(c, o, pick) {
@@ -81,6 +84,7 @@
     overlay.addEventListener('pointerover', e => { hover = !!e.target.closest('button[data-id]') })
     overlay.addEventListener('pointerleave', () => { hover = false })
     new ResizeObserver(resize).observe(c)
+    bindZoom()
     reset('')
   }
 
@@ -100,6 +104,65 @@
     topRing = 0
     if (overlay) overlay.textContent = ''
     cam = { x: width / 2, y: height / 2, s: 1.5 }
+    setAutoFit(true)
+  }
+
+  function setAutoFit(on) {
+    autoFit = on
+    document.getElementById('zoomFit')?.setAttribute('aria-pressed', String(on))
+  }
+
+  /** Zooms about a point on screen, which stays put. Any manual move stops the automatic fit until Fit is pressed. */
+  function zoomAt(px, py, factor) {
+    setAutoFit(false)
+    const s = Math.min(MAX_SCALE, Math.max(MIN_SCALE, cam.s * factor))
+    cam.x = px - (px - cam.x) * (s / cam.s)
+    cam.y = py - (py - cam.y) * (s / cam.s)
+    cam.s = s
+  }
+
+  function bindZoom() {
+    const middle = () => [(width - inset) / 2, height / 2]
+    document.getElementById('zoomIn').onclick = () => zoomAt(...middle(), ZOOM_STEP)
+    document.getElementById('zoomOut').onclick = () => zoomAt(...middle(), 1 / ZOOM_STEP)
+    document.getElementById('zoomFit').onclick = () => setAutoFit(true)
+    const stage = canvas.parentElement
+    stage.addEventListener('wheel', e => {
+      if (e.target.closest('.panel, .hud-actions')) return
+      e.preventDefault()
+      const r = canvas.getBoundingClientRect()
+      zoomAt(e.clientX - r.left, e.clientY - r.top, Math.exp(-e.deltaY * (e.ctrlKey ? 0.01 : 0.002)))
+    }, { passive: false })
+    canvas.addEventListener('pointerdown', e => {
+      canvas.setPointerCapture(e.pointerId)
+      pointers.set(e.pointerId, { x: e.clientX, y: e.clientY })
+      pinch = 0
+      canvas.classList.add('dragging')
+    })
+    canvas.addEventListener('pointermove', e => {
+      const prev = pointers.get(e.pointerId)
+      if (!prev) return
+      pointers.set(e.pointerId, { x: e.clientX, y: e.clientY })
+      if (pointers.size === 1) {
+        if (e.clientX === prev.x && e.clientY === prev.y) return
+        setAutoFit(false)
+        cam.x += e.clientX - prev.x
+        cam.y += e.clientY - prev.y
+      } else if (pointers.size === 2) {
+        const [a, b] = [...pointers.values()]
+        const apart = Math.hypot(a.x - b.x, a.y - b.y)
+        const r = canvas.getBoundingClientRect()
+        if (pinch) zoomAt((a.x + b.x) / 2 - r.left, (a.y + b.y) / 2 - r.top, apart / pinch)
+        pinch = apart
+      }
+    })
+    const release = e => {
+      pointers.delete(e.pointerId)
+      pinch = 0
+      if (!pointers.size) canvas.classList.remove('dragging')
+    }
+    canvas.addEventListener('pointerup', release)
+    canvas.addEventListener('pointercancel', release)
   }
 
   function resize() {
@@ -144,21 +207,12 @@
   const spineFrom = j => (j.ring ? layout.knot(j.radial, j.ring - 1) : HUB)
   const nextRadial = r => (r + 1) % layout.radials.length
 
-  /** The next stretch of silk towards a listing's junction, innermost first. */
-  function towards(j) {
-    for (let k = 0; k <= j.ring; k++) {
-      const knot = layout.knot(j.radial, k)
-      const from = spineFrom(knot)
-      if (!built.has(`${from.id}>${knot.id}`)) return from.woven ? { from, to: knot, kind: 'spine' } : null
-    }
-    return null
-  }
-
-  /** The next stretch of spiral in this surface's part of the web, working outwards. */
-  function ambient(surface, ceiling) {
-    const sector = layout.radials.filter(r => r.surface === surface)
+  /** The next stretch of silk anywhere in the web, ring by ring from the middle, starting in this surface's part. */
+  function frontier(surface, ceiling) {
+    const start = Math.max(0, SURFACES.indexOf(surface)) * RADIALS_PER_SURFACE
+    const order = [...layout.radials.slice(start), ...layout.radials.slice(0, start)]
     for (let k = 0; k < ceiling; k++) {
-      for (const r of sector) {
+      for (const r of order) {
         const knot = layout.knot(r.index, k)
         const from = spineFrom(knot)
         if (!built.has(`${from.id}>${knot.id}`)) {
@@ -197,17 +251,12 @@
     return agents.get(name)
   }
 
-  /** What this agent does next, or nothing. Listings it found come first, then silk for what it really did. */
+  /** What this agent does next, or nothing. A listing waits for every ring inside it, then silk for what it really did. */
   function nextWork(a) {
-    while (a.jobs.length) {
-      const j = a.jobs[0]
-      if (j.woven) { a.jobs.shift(); continue }
-      const stretch = towards(j)
-      if (stretch) return stretch
-      break
-    }
+    while (a.jobs.length && a.jobs[0].woven) a.jobs.shift()
+    if (a.jobs.length) return frontier(a.surface, topRing + 1)
     if (!a.surface || a.silk <= 0 || status !== 'running') return null
-    const stretch = ambient(a.surface, Math.max(AMBIENT_RINGS, topRing + 2))
+    const stretch = frontier(a.surface, Math.max(AMBIENT_RINGS, topRing + 2))
     return stretch && { ...stretch, earned: true }
   }
 
@@ -283,10 +332,11 @@
   function position(el, j) { el.style.transform = `translate(${sx(j.x).toFixed(1)}px, ${sy(j.y).toFixed(1)}px)` }
 
   function updateCamera(dt) {
+    if (!autoFit) return
     let reach = 130
     for (const r of layout.radials) for (const j of r.knots) if (j.woven) reach = Math.max(reach, j.reach + 34)
     const room = Math.min(width - inset, height) / 2
-    const target = { s: Math.min(1.6, Math.max(0.3, room / reach)), x: (width - inset) / 2, y: height / 2 }
+    const target = { s: Math.min(1.6, Math.max(MIN_SCALE, room / reach)), x: (width - inset) / 2, y: height / 2 }
     if (hover) return // A target doesn't move while it is about to be clicked.
     const k = Math.min(1, dt * 1.6)
     cam.s += (target.s - cam.s) * k
@@ -296,24 +346,23 @@
 
   const thread = (alpha, w = 0.9) => { ctx.strokeStyle = `rgba(255,255,255,${alpha})`; ctx.lineWidth = w }
 
-  function drawEdge(e) {
-    ctx.beginPath()
+  function traceEdge(e) {
     ctx.moveTo(sx(e.a.x), sy(e.a.y))
     if (e.done >= 1) ctx.quadraticCurveTo(sx(e.c.x), sy(e.c.y), sx(e.b.x), sy(e.b.y))
     else for (let i = 1; i <= 10; i++) { const p = at(e, e.a, e.done * i / 10); ctx.lineTo(sx(p.x), sy(p.y)) }
-    ctx.stroke()
   }
 
   function drawAnchors(age) {
     // Anchor threads shoot out first and carry on past the last junction on each radial.
     const grow = calm() ? 1 : Math.min(1, age / 1.4)
     const eased = 1 - (1 - grow) ** 3
-    thread(0.2, 0.8)
+    thread(0.14, 0.8)
+    const edge = Math.hypot(width, height) + Math.hypot(cam.x - width / 2, cam.y - height / 2)
     for (const r of layout.radials) {
       const tip = r.knots.filter(j => j.woven).at(-1) ?? HUB
       ctx.beginPath()
       ctx.moveTo(sx(tip.x), sy(tip.y))
-      const dist = Math.max(tip === HUB ? 0 : tip.reach, FAR * eased)
+      const dist = Math.max(tip === HUB ? 0 : tip.reach, (edge / cam.s) * eased)
       ctx.lineTo(sx(Math.cos(r.angle) * dist), sy(Math.sin(r.angle) * dist))
       ctx.stroke()
     }
@@ -365,7 +414,10 @@
     last = now
     if (started === null) started = now
     updateCamera(dt)
-    if (status !== 'paused') for (const a of agents.values()) advance(a, dt)
+    if (status !== 'paused') {
+      for (const a of agents.values()) advance(a, dt)
+      catchUp()
+    }
     for (const a of agents.values()) {
       const parked = a.idle && !a.lay && !a.step && !a.walk.length
       if (parked && (a.leaving || (status !== 'running' && status !== 'paused'))) {
@@ -375,16 +427,40 @@
     }
     ctx.clearRect(0, 0, width, height)
     drawAnchors((now - started) / 1000)
-    for (const e of edges) { thread(e.kind === 'ring' ? 0.74 : 0.5, 0.9); drawEdge(e) }
+    for (const [kind, alpha] of [['spine', 0.5], ['ring', 0.74]]) {
+      thread(alpha, 0.9)
+      ctx.beginPath()
+      for (const e of edges) if (e.kind === kind) traceEdge(e)
+      ctx.stroke()
+    }
     ctx.fillStyle = '#fff'
     for (const r of layout.radials) for (const j of r.knots) {
       if (!j.woven || j.caseId) continue
-      ctx.beginPath(); ctx.arc(sx(j.x), sy(j.y), 1.7, 0, Math.PI * 2); ctx.fill()
+      ctx.beginPath(); ctx.arc(sx(j.x), sy(j.y), Math.max(0.5, Math.min(1.7, cam.s * 1.4)), 0, Math.PI * 2); ctx.fill()
     }
     ctx.beginPath(); ctx.arc(cam.x, cam.y, 3.5, 0, Math.PI * 2); ctx.fill()
     const labels = []
     for (const a of agents.values()) drawAgent(a, labels)
-    for (const [id, el] of points) position(el, layout.placed.get(id))
+    const moved = `${cam.x.toFixed(1)},${cam.y.toFixed(1)},${cam.s.toFixed(4)}`
+    if (moved !== drawnCam) {
+      drawnCam = moved
+      overlay.style.setProperty('--z', Math.max(0.4, Math.min(1, cam.s / 0.8)).toFixed(2))
+      for (const [id, el] of points) position(el, layout.placed.get(id))
+    }
+  }
+
+  /** Agents spin one stretch at a time, so when pages pour in the web weaves itself to keep up with them. */
+  function catchUp() {
+    let backlog = 0
+    for (const a of agents.values()) {
+      while (a.jobs.length && a.jobs[0].woven) a.jobs.shift()
+      backlog += a.jobs.length
+    }
+    for (let n = Math.ceil(backlog / CATCH_UP_PER_STRETCH); n > 0 && backlog; n--) {
+      const work = frontier(SURFACES[n % SURFACES.length], topRing + 1)
+      if (!work) break
+      finish(addEdge(work.from, work.to, work.kind))
+    }
   }
 
   /** Spin everything out to the highest listing at once, for a hunt that was already under way when opened. */
@@ -444,7 +520,11 @@
     visible = on
     if (on && !frame) { resize(); last = performance.now(); frame = requestAnimationFrame(tick) }
   }
-  const setInset = px => { inset = px }
+  const setInset = px => {
+    inset = px
+    const zoom = document.getElementById('webZoom')
+    if (zoom) zoom.style.right = `${20 + px}px`
+  }
 
   globalThis.WebLayout = createLayout
   globalThis.WebView = { init, reset, update, setVisible, setInset }

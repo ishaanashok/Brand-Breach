@@ -73,7 +73,7 @@ test('a page is read once and a site only so often', () => {
   expect(m.claimRead('https://t.me/d')).toContain('enough')
 })
 
-test('a hunt ends at its search limit, even for agents already out', async () => {
+test('a hunt given a search limit ends there, even for agents already out', async () => {
   const nim = scripted([{ role: 'assistant', content: null, tool_calls: [call('web_search', { query: 'one' }), call('web_search', { query: 'two' })] }])
   let n = 0
   const s = spiderSource({ brand: 'Acme', officialDomains: [], nim, maxSearches: 1, search, onSearch: () => n++ })
@@ -97,12 +97,12 @@ test('a hunt ends when agents stop finding anything new, or nothing is left to s
 
   let t = 0
   const idle = spiderSource({ brand: 'Acme', officialDomains: [], nim, now: () => t })
-  t = 19_000
+  t = 9_000
   expect(idle.over!()).toBeNull()
   idle.touch!()
-  t = 38_000
+  t = 18_000
   expect(idle.over!()).toBeNull()
-  t = 40_000
+  t = 20_000
   expect(idle.over!()).toContain('anywhere new')
 })
 
@@ -316,4 +316,32 @@ test('verification runs side by side, best page first, within the budget', async
   expect(most).toBe(8)
   expect(h.counters.shortlisted).toBe(12)
   expect(h.spent).toBeCloseTo(0.12)
+})
+
+test('with no search limit, a hunt runs until agents turn up nothing worth a closer look', async () => {
+  const items = (q: string) => Promise.resolve([{ url: `https://${q.replace(/\W/g, '')}.example/`, title: 't', snippet: 's' }])
+  let n = 0
+  const nim: any = { model: 'm', chat: async () => ({ usd: 0, message: { role: 'assistant', content: null, tool_calls: ++n % 2 ? [call('web_search', { query: `angle ${n}` })] : [call('report', { candidates: [] })] } }) }
+  const s = spiderSource({ brand: 'Acme', officialDomains: [], nim, search: items })
+  const lanes = s.lanes('domains', ['a'])
+  expect(s.over!()).toBeNull()
+  // New pages keep coming, but the classifier thinks little of them.
+  for (const lane of lanes) await s.search(lane, async () => 0)
+  expect(s.over!()).toBeNull()
+  await s.followLead({ kind: 'domain', value: 'd' }, lanes[0]!, async () => 1)
+  for (const v of ['e', 'f', 'g', 'h']) await s.followLead({ kind: 'domain', value: v }, lanes[0]!, async () => 0)
+  expect(s.over!()).toBeNull()
+  await s.followLead({ kind: 'domain', value: 'i' }, lanes[0]!, async () => 0)
+  expect(s.over!()).toContain('nothing new')
+})
+
+test('a source stays busy while an agent is out and just after it returns', async () => {
+  let t = 0
+  let during = false
+  const s = spiderSource({ brand: 'Acme', officialDomains: [], search, now: () => t, nim: { model: 'm', chat: async () => { during = s.busy!(); t = 50_000; return { usd: 0, message: { role: 'assistant', content: 'done' } } } } as any })
+  await s.search(s.lanes('domains', ['a'])[0]!)
+  expect(during).toBe(true)
+  expect(s.busy!()).toBe(true)
+  t = 53_001
+  expect(s.busy!()).toBe(false)
 })

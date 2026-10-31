@@ -16,6 +16,7 @@ const LEAD_ROUTE: Record<LeadKind, Surface> = { seller: 'marketplace', domain: '
 const TRIAGE_TIMEOUT_MS = 30_000 // A local model loading or busy with other scouts can take a while.
 // Only repeats twice running means the lane has nothing new, even if it still returns results.
 const DRY_LIMIT = 2
+const PROMISING_AT = 0.8 // On a real hunt 40% of pages passed 0.5 from start to end, and only this tapered off.
 
 export type ScoutDeps = {
   huntId: string; input: HuntInput; brandSlug: string; store: Store; bus: Bus
@@ -79,7 +80,8 @@ export class Scout {
         await this.hunt.setScoutStatus(this.name, 'online', Date.now())
       }
 
-      const lead = this.leads.shift()
+      // Every lane comes before any lead, so a brand's whole territory gets covered.
+      const lead = exhausted ? this.leads.shift() : undefined
       if (lead) {
         const r = await this.iteration(onHits => this.d.source.followLead(lead, this.lane, onHits))
         if (!r) this.leads.unshift(lead)
@@ -108,11 +110,10 @@ export class Scout {
     let fresh = 0
     const handle: OnHits = async hits => {
       await this.refreshRules()
-      const firsts = await Promise.all(hits.map(h => this.handleHit({ ...h, lane: key })))
-      const n = firsts.filter(Boolean).length
+      const results = await Promise.all(hits.map(h => this.handleHit({ ...h, lane: key })))
       found += hits.length
-      fresh += n
-      return n
+      fresh += results.filter(r => r.first).length
+      return results.filter(r => (r.score ?? 0) >= PROMISING_AT).length
     }
     this.runUsd = 0
     try {
@@ -138,17 +139,16 @@ export class Scout {
     this.rules.kb = kbEntities(b)
   }
 
-  private async handleHit(hit: Hit): Promise<boolean> {
+  private async handleHit(hit: Hit): Promise<{ first: boolean; score?: number }> {
     const id = caseId(this.d.brandSlug, hit.url)
     const url = canonicalUrl(hit.url)
     await this.hunt.bump('seen')
     const { first } = await this.d.store.kase(id).report(id, this.d.brandSlug, this.d.huntId, { ...hit, url }, this.name, Date.now())
-    if (!first) { await this.hunt.bump('duplicates'); return false }
+    if (!first) { await this.hunt.bump('duplicates'); return { first: false } }
     await this.hunt.addCase(id)
     await this.me.send(HUNT_CHANNEL, encodeTag('NEW', { caseId: id, url, lane: hit.lane })).catch(() => {})
     if (hit.seller) await this.brand.addEdges([{ from: `listing:${url}`, to: `seller:${hit.seller}`, kind: 'sold_by' }])
-    await this.assess(id, hit, url)
-    return true
+    return { first: true, score: await this.assess(id, hit, url) }
   }
 
   /** A crash can land between reporting a case and triaging it, and a later report is only a duplicate. */
@@ -157,18 +157,19 @@ export class Scout {
     await this.assess(c.id, c.hit!, c.hit!.url)
   }
 
-  private async assess(id: string, hit: Hit, url: string) {
+  private async assess(id: string, hit: Hit, url: string): Promise<number | undefined> {
     const rule = rulesCheck(hit, this.rules)
     if (rule.skip) {
       await this.d.store.kase(id).skip(rule.skip)
       await this.hunt.bump('skipped')
-      return
+      return undefined
     }
-    await this.triage(id, hit, rule.priceFlag)
+    const score = await this.triage(id, hit, rule.priceFlag)
     for (const lead of hit.leads ?? []) await this.shareLead(lead, url)
+    return score
   }
 
-  private async triage(id: string, hit: Hit, priceFlag: boolean) {
+  private async triage(id: string, hit: Hit, priceFlag: boolean): Promise<number | undefined> {
     const text = hitText(hit) + (priceFlag ? '\nPrice is far below the usual price.' : '')
     // In a run the source's estimate already covers this, so other scouts' holds can't strand the page.
     const inRun = this.runUsd !== null
@@ -179,7 +180,7 @@ export class Scout {
       await Bun.sleep(this.d.delayMs)
       r = await this.hunt.reserve(this.name, est, Date.now())
     }
-    if (!r.ok) return
+    if (!r.ok) return undefined
     try {
       const res = await this.d.triage.decide({ text }, triageQuestions(this.d.input.brand), { timeoutMs: TRIAGE_TIMEOUT_MS })
       if (inRun) this.runUsd = (this.runUsd ?? 0) + res.usage.usd
@@ -195,6 +196,7 @@ export class Scout {
       await this.brand.recordLaneOutcome(key, { tries: 0, hits: sum.score, costUsd: res.usage.usd })
       await this.d.store.playbook().update(key, { tries: 0, hits: sum.score, costUsd: res.usage.usd })
       await this.brand.markSeen(canonicalUrl(hit.url), { score: sum.score, state: 'triaged' })
+      return sum.score
     } catch (err) {
       await this.hunt.settle(r.id!, 0)
       await this.d.store.kase(id).markUndecided(String(err))

@@ -109,17 +109,18 @@ export const SPIDER_LANE_NAMES = LANES
 
 const MAX_TURNS = 7
 const MAX_RUNS_PER_LANE = 1
-const MAX_LEADS = 6
+const MAX_LEADS = 8
+const MAX_SEARCHES_PER_LEAD = 2
 const MAX_HITS = 8
 const MAX_SEARCHES_PER_RUN = 5
 const CLASSIFY_USD_PER_RUN = 0.012 // Measured at 385 tokens a page, this covers about 300 pages.
 const MAX_READS_PER_HOST = 3
 const SAME_QUERY = 0.7
 const BRIEF_QUERIES = 25
-/** Enough for one full round of the five scouts to come back empty. */
+/** One full round of the five scouts turning up nothing worth a closer look. */
 const DRY_RUNS = 5
-const IDLE_MS = 20_000
-export const DEFAULT_MAX_SEARCHES = 40
+const IDLE_MS = 10_000
+const SETTLE_MS = 3000
 const SNIPPET = 500
 const EVIDENCE = 1800
 
@@ -243,7 +244,7 @@ export async function runSpider(o: SpiderOpts & { surface: Surface; mission: str
       try {
         if (call.function.name === 'web_search') {
           const query = String(args.query)
-          const refused = searches >= MAX_SEARCHES_PER_RUN ? 'You have used your searches. Call report now.' : memory.claimSearch(query)
+          const refused = searches >= (o.followUp ? MAX_SEARCHES_PER_LEAD : MAX_SEARCHES_PER_RUN) ? 'You have used your searches. Call report now.' : memory.claimSearch(query)
           if (refused) output = refused
           else {
             say(`searching “${query.slice(0, 80)}”`)
@@ -310,7 +311,7 @@ const hostLabel = (u: string) => { try { return new URL(u).hostname } catch { re
 /** The real source. One per hunt, because it remembers what the hunt has covered and used up. */
 export function spiderSource(o: Omit<SpiderOpts, 'onActivity'> & { onActivity?: (surface: Surface, text: string) => void; onSearch?: () => void; maxSearches?: number; now?: () => number }): Source {
   const now = o.now ?? Date.now
-  const memory = webMemory(o.maxSearches ?? DEFAULT_MAX_SEARCHES)
+  const memory = webMemory(o.maxSearches)
   const runs = new Map<string, number>()
   let leads = 0
   let active = 0
@@ -322,18 +323,20 @@ export function spiderSource(o: Omit<SpiderOpts, 'onActivity'> & { onActivity?: 
     lastWork = now()
     // The classifier keeps working after the agent is done, and that still counts as the hunt being busy.
     const classifying: Promise<unknown>[] = []
-    let streamed = 0
+    let promising = 0
+    let reported = 0
     try {
       const r = await runSpider({
         ...o, surface: lane.source, followUp, memory,
-        ...(onHits ? { onHits: (hits: Hit[]) => { streamed += hits.length; classifying.push(onHits(hits).catch(() => 0)) } } : {}),
+        ...(onHits ? { onHits: (hits: Hit[]) => { classifying.push(onHits(hits).then(n => { promising += n }).catch(() => {})) } } : {}),
         mission: `${LANES[lane.source]?.[lane.strategy] ?? lane.strategy}. Search terms to start from: ${lane.query}`,
         onActivity: text => o.onActivity?.(lane.source, text),
       })
-      dryRuns = r.hits.length || streamed ? 0 : dryRuns + 1
+      reported = r.hits.length
       return { hits: r.hits, usd: r.usd, leads: r.leads }
     } finally {
       await Promise.all(classifying)
+      dryRuns = reported || promising ? 0 : dryRuns + 1
       active--
       lastWork = now()
     }
@@ -344,11 +347,12 @@ export function spiderSource(o: Omit<SpiderOpts, 'onActivity'> & { onActivity?: 
     estUsd: o.searchUsd ? o.searchUsd * MAX_SEARCHES_PER_RUN + 0.002 + CLASSIFY_USD_PER_RUN : 0,
     restore: ({ searches, urls }) => memory.restore(searches, urls),
     touch: () => { lastWork = now() },
+    busy: () => active > 0 || now() - lastWork < SETTLE_MS,
     caveat: () => (searchDegraded() ? 'Results were limited because DuckDuckGo is not answering. A search API key avoids this.' : null),
     over() {
       if (active) return null
       if (memory.spent()) return `used all ${memory.limit} searches`
-      if (dryRuns >= DRY_RUNS) return `the last ${DRY_RUNS} agents found nothing new`
+      if (dryRuns >= DRY_RUNS) return `the last ${DRY_RUNS} agents found nothing new worth a closer look`
       return now() - lastWork >= IDLE_MS ? 'no agent has anywhere new to look' : null
     },
     // A spent lane reports nothing, so the orchestrator moves its scout on and the hunt can end.
