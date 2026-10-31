@@ -8,7 +8,11 @@ export const EARLIER_HUNT = 'earlier'
 /** A page's latest outcome, and every hunt that came across it. */
 export type PageMemory = { score: number; state: string; firstAt: number; lastAt: number; hunts: string[] }
 /** One search by one agent, so later hunts can see what paid off and what came back empty. */
-export type SearchRecord = { huntId: string; scout: string; lane: string; at: number; found: number; fresh: number; usd: number; failed?: boolean }
+export type SearchRecord = { huntId: string; scout: string; lane: string; at: number; found: number; fresh: number; usd: number; failed?: boolean; queries?: QueryOutcome[] }
+/** One query an agent ran: how many results came back, and how many of those were new. */
+export type QueryOutcome = { query: string; found: number; fresh: number }
+/** What later hunts should know before choosing where to look. */
+export type SearchHistory = { dry: string[]; worked: string[]; sites: string[] }
 export type Label = { caseId: string; url: string; decision: 'approve' | 'reject'; deciderId: string; score: number; seller?: string }
 
 export type BrandState = {
@@ -39,6 +43,35 @@ export const initialBrand = (): BrandState => ({
 
 const v = (s: BrandState, patch: Partial<BrandState>): BrandState => ({ ...s, ...patch, version: s.version + 1 })
 const clamp = (x: number) => Math.min(0.95, Math.max(0.05, x))
+
+// The web changes, so a search that was dry a while ago deserves another try.
+const HISTORY_MS = 30 * 24 * 60 * 60 * 1000
+const HISTORY_SITES = 20
+const FLAGGED = new Set(['verified', 'awaiting_approval', 'approved'])
+const hostOf = (url: string) => { try { return new URL(url).hostname.replace(/^www\./, '') } catch { return '' } }
+
+/**
+ * Sums up earlier searches for the next hunt. A query's latest outcome is the one that counts. One with no
+ * results at all isn't dry: that is also how an outage looks.
+ */
+export function searchHistory(s: BrandState, now: number): SearchHistory {
+  const latest = new Map<string, QueryOutcome>()
+  for (const r of s.searches ?? []) {
+    if (now - r.at > HISTORY_MS) continue
+    for (const q of r.queries ?? []) latest.set(q.query.trim().toLowerCase(), q)
+  }
+  const outcomes = [...latest.values()]
+  const flagged = new Map<string, number>()
+  for (const [url, p] of Object.entries(s.seen ?? {})) {
+    const host = hostOf(url)
+    if (host && FLAGGED.has(p.state)) flagged.set(host, (flagged.get(host) ?? 0) + 1)
+  }
+  return {
+    dry: outcomes.filter(q => q.found > 0 && q.fresh === 0).map(q => q.query),
+    worked: outcomes.filter(q => q.fresh > 0).sort((a, b) => b.fresh - a.fresh).map(q => q.query),
+    sites: [...flagged].sort((a, b) => b[1] - a[1]).slice(0, HISTORY_SITES).map(([host]) => host),
+  }
+}
 
 export const brand = {
   configure(s: BrandState, slug: string, officialDomains: string[], authorizedSellers: string[]): Step<BrandState, BrandState> {

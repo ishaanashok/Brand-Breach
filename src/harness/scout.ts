@@ -129,7 +129,7 @@ export class Scout {
     }
     await this.d.store.playbook().update(key, { tries: 1, hits: 0, costUsd: result.usd })
     await this.brand.recordLaneOutcome(key, { tries: 1, hits: 0, costUsd: result.usd })
-    await this.brand.recordSearch({ huntId: this.d.huntId, scout: this.name, lane: key, at: Date.now(), found, fresh, usd: result.usd })
+    await this.brand.recordSearch({ huntId: this.d.huntId, scout: this.name, lane: key, at: Date.now(), found, fresh, usd: result.usd, ...(result.queries?.length ? { queries: result.queries } : {}) })
     this.runUsd = null
     for (const { lead, from } of result.leads ?? []) await this.shareLead(lead, canonicalUrl(from))
     return { found, fresh }

@@ -1,7 +1,7 @@
 import { REASONER_STALE_MS, type Escalation } from '../core/escalate'
 import { rankLanes } from '../core/lanes'
 import type { CaseState } from '../core/machines/case'
-import { DEFAULT_THRESHOLD } from '../core/machines/brand'
+import { DEFAULT_THRESHOLD, searchHistory } from '../core/machines/brand'
 import { earnsReading, thresholdFor } from '../core/policy'
 import { hasReadableEvidence } from '../core/questions'
 import { encodeTag, parseTag } from '../core/tags'
@@ -100,9 +100,15 @@ export class HuntRunner {
 
     const known = await store.hunt(this.huntId).snapshot()
     const caseUrls = (await store.cases(known.caseIds)).map(c => c.hit?.url)
+    const remembered = await store.brand(this.brandSlug).snapshot()
+    const history = searchHistory(remembered, Date.now())
+    if (announce && (history.dry.length || history.worked.length || history.sites.length)) {
+      await store.hunt(this.huntId).log(`Using earlier hunts: ${history.worked.length} searches that paid off, ${history.dry.length} that came back dry, ${history.sites.length} flagged sites`, Date.now())
+    }
     this.d.source.restore?.({
       searches: known.counters.searches ?? 0,
-      urls: [...caseUrls.filter((u): u is string => !!u), ...Object.keys((await store.brand(this.brandSlug).snapshot()).seen)],
+      urls: [...caseUrls.filter((u): u is string => !!u), ...Object.keys(remembered.seen)],
+      history,
     })
 
     const lanes = await this.initialLanes()

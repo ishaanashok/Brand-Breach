@@ -12,7 +12,7 @@ The app now runs on the intended stack: Terse's Durable Actors, running locally,
 
 - **Hosting:** actors stay local on this computer. Terse's cloud is out of scope.
 - **Screenshots:** deferred. PR 4 uses each page's own preview image only.
-- **Actors:** one durable actor per brand, holding a persistent knowledge graph of earlier searches, what succeeded and failed, and how pages map across searches. This replaces the 16 shared case actors, and is being built by the coordinating thread. Built: each brand's actor keeps cases, pages (with every hunt that saw them), links and searches as table rows. See it at `GET /api/brands/:slug/memory`. Hunts stay as their own short-lived actors because they are the hot budget meter. Later hunts don't yet use the search history to choose where to look.
+- **Actors:** one durable actor per brand, holding a persistent knowledge graph of earlier searches, what succeeded and failed, and how pages map across searches. This replaces the 16 shared case actors, and is being built by the coordinating thread. Built: each brand's actor keeps cases, pages (with every hunt that saw them), links and searches as table rows. See it at `GET /api/brands/:slug/memory`. Hunts stay as their own short-lived actors because they are the hot budget meter. Later hunts are told which searches paid off, which came back dry, and which sites had flagged pages. Repeats of a dry search from the last 30 days are refused.
 
 Last real run: New Balance, $0.50 limit, stopped at $0.43, with 542 pages, 76 awaiting review, 4 steers, 2 second opinions, about 20 actor processes and no errors.
 
