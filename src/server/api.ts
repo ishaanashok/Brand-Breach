@@ -14,6 +14,9 @@ import type { Store } from '../store/types'
 const RESUME_TRIES = 12
 const RESUME_WAIT_MS = 5000
 
+/** How many of a brand's earlier finds fill out a hunt's web. */
+const EARLIER_CASES = 150
+
 export type AppConfig = {
   port: number; store: Store; mode: string; verifyEstUsd: number; timing: Timing
   triage: Decider; verify: Decider; reasoner?: Reasoner
@@ -147,6 +150,11 @@ export async function createServer(cfg: AppConfig): Promise<App> {
     const v = await view(id)
     if (!v) return json({ error: 'unknown hunt' }, 404)
     if (!rest) return json(await publicView(id))
+    if (rest === 'earlier') {
+      const now = new Set(v.hunt.caseIds)
+      const cases = (await store.brandCases(slug(v.hunt.input!.brand), EARLIER_CASES + now.size)).filter(c => !now.has(c.id)).slice(0, EARLIER_CASES)
+      return json(redactDeep({ cases }, termsFor([...v.cases, ...cases], v.brand)))
+    }
     if (rest === 'report') {
       const peers = await Promise.all((await store.playbook().listHunts()).map(h => store.hunt(h).snapshot()))
       const history = peers

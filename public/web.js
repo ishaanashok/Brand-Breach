@@ -6,6 +6,7 @@
   const AGENT_LABEL = { social: 'Social media', marketplace: 'Marketplaces', video: 'Video sites', domains: 'Websites', channels: 'Group chats' }
   const RADIALS_PER_SURFACE = 6
   const SPREAD_RINGS = 6 // Listings scatter over this many rings, so spiders don't bunch up.
+  const SPILL_RINGS = 3 // How far ahead a surface's part of the web gets before listings overflow elsewhere.
   const AMBIENT_RINGS = 8
   const MIN_SCALE = 0.03, MAX_SCALE = 5, ZOOM_STEP = 1.35
   const SILK_PER_ACTION = 3
@@ -47,21 +48,25 @@
         const known = SURFACES.includes(surface) ? surface : SURFACES[hash(surface) % SURFACES.length]
         const sector = radials.filter(r => r.surface === known)
         const pick = hash(id)
-        const radial = sector[pick % sector.length]
-        // Starts on a scattered ring and moves on until it finds a free junction in this surface's part of the web.
-        for (let tries = 0; ; tries++) {
-          const r = sector[(radial.index % sector.length + tries) % sector.length]
-          const k = ((pick >>> 8) % SPREAD_RINGS) + 1 + Math.floor(tries / sector.length)
-          const j = knot(r.index, k)
-          if (!j.caseId) {
-            j.caseId = id
-            placed.set(id, j)
-            return j
+        const claim = j => { j.caseId = id; placed.set(id, j); return j }
+        const scattered = knot(sector[pick % sector.length].index, ((pick >>> 8) % SPREAD_RINGS) + 1)
+        if (!scattered.caseId) return claim(scattered)
+        const nearest = among => {
+          for (let k = 1; ; k++) {
+            const free = among.filter(r => !knot(r.index, k).caseId)
+            if (free.length) return knot(free[pick % free.length].index, k)
           }
         }
+        // A busy surface spills into the emptiest part of the web, so no part of it sits bare.
+        const own = nearest(sector), anywhere = nearest(radials)
+        return claim(own.ring - anywhere.ring > SPILL_RINGS ? anywhere : own)
       },
     }
   }
+
+  /** How serious a flagged listing looks, from green at a coin flip up to red when near certain. */
+  const levelOf = c => c.reasoning?.confidence ?? c.verification?.score ?? c.triage?.score ?? 0.5
+  const riskColor = score => `hsl(${Math.round(120 * (1 - Math.min(1, Math.max(0, (score - 0.5) / 0.5))))} 85% 55%)`
 
   const HUB = { id: 'hub', x: 0, y: 0, woven: true }
   const INFRINGING = new Set(['verified', 'awaiting_approval', 'approved'])
@@ -99,6 +104,7 @@
     seen = new Set()
     cases = new Map()
     seenEvents = new Set()
+    earlierIds = new Set()
     status = 'running'
     started = null
     topRing = 0
@@ -318,14 +324,18 @@
       position(el, j)
     }
     const spider = INFRINGING.has(c.state)
-    const klass = `web-point state-${c.state}${spider ? ' spider' : ''}${c.id === chosen ? ' chosen' : ''}`
+    const old = earlierIds.has(c.id)
+    const klass = `web-point state-${c.state}${spider ? ' spider' : ''}${old ? ' earlier' : ''}${c.id === chosen ? ' chosen' : ''}`
     if (el.className !== klass) el.className = klass
+    const color = spider ? riskColor(levelOf(c)) : ''
+    if (el.style.color !== color) el.style.color = color
     if (spider && !el.firstChild) el.innerHTML = SPIDER
     if (!spider && el.firstChild) el.textContent = ''
-    const label = `${spider ? 'Spider' : 'Site'}: ${c.hit?.title ?? 'listing'}`
+    const label = `${spider ? `Spider, ${Math.round(levelOf(c) * 100)}% risk` : 'Site'}${old ? ', earlier hunt' : ''}: ${c.hit?.title ?? 'listing'}`
     if (el.title !== label) { el.title = label; el.setAttribute('aria-label', label) }
   }
   let chosen = null
+  let earlierIds = new Set()
 
   const sx = x => x * cam.s + cam.x
   const sy = y => y * cam.s + cam.y
@@ -497,7 +507,17 @@
         agentFor(surface, AGENT_LABEL[surface] ?? surface, surface).jobs.push(j)
       }
     }
-    if (instant) weaveNow()
+    // Already found, so they appear at once rather than being spun as if searched for now.
+    let added = false
+    for (const c of view.earlier ?? []) {
+      if (!c.hit || seen.has(c.id)) continue
+      seen.add(c.id)
+      earlierIds.add(c.id)
+      cases.set(c.id, c)
+      topRing = Math.max(topRing, layout.place(c.id, c.hit.surface).ring)
+      added = true
+    }
+    if (instant || added) weaveNow()
     for (const e of view.hunt.events ?? []) {
       const key = `${e.at}:${e.text}`
       if (seenEvents.has(key)) continue
@@ -527,5 +547,6 @@
   }
 
   globalThis.WebLayout = createLayout
+  globalThis.WebRiskColor = riskColor
   globalThis.WebView = { init, reset, update, setVisible, setInset }
 })()

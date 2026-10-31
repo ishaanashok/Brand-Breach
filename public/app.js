@@ -10,6 +10,7 @@ let version = -1
 let currentTab = 'setup'
 let caseFilter = 'review'
 let config = { billed: [] }
+let earlier = []
 
 /** Rewriting a list while a button in it is held down loses the click, so a list is only rewritten when it changed. */
 function setHtml(el, html) {
@@ -97,9 +98,16 @@ function openHunt(id) {
   view = null
   selected = null
   location.hash = id
+  earlier = []
   closePanel()
   WebView.reset(id)
   connect()
+  // The brand's earlier finds fill the web's empty spots from the start.
+  fetch(`/api/hunts/${id}/earlier`).then(r => r.json()).then(found => {
+    if (huntId !== id) return
+    earlier = found.cases ?? []
+    if (view) render()
+  }).catch(() => {})
 }
 
 function connect() {
@@ -127,6 +135,7 @@ function render() {
   $('status').textContent = `${hunt.input.brand}: ${STATUS_LABEL[hunt.status] ?? hunt.status}`
   renderHud(hunt)
   renderCases()
+  view.earlier = earlier
   WebView.update(view, panelOpen() ? selected : null)
   renderReturn()
 }
@@ -252,7 +261,8 @@ function reasoningHtml(r) {
 const WHY_LABEL = { cleared: 'Why cleared', skipped: 'Why skipped', unreadable: "Why we couldn't read it", undecided: "Why it couldn't be decided" }
 
 function renderDetail() {
-  const c = view.cases.find(x => x.id === selected)
+  const current = view.cases.find(x => x.id === selected)
+  const c = current ?? earlier.find(x => x.id === selected)
   if (!c) {
     const n = needsReview().length
     setHtml($('caseDetail'), `<div class="detail muted">${n ? 'Select a candidate to see the evidence and decide.' : 'Select a candidate to see the evidence.'}</div>`)
@@ -260,12 +270,13 @@ function renderDetail() {
     return
   }
   const d = decisionOf(c)
-  const pending = c.state === 'awaiting_approval'
+  const pending = current && c.state === 'awaiting_approval'
   const html = `<div class="detail">
     <h2>${esc(c.hit?.title)}</h2>
     <p class="${'state-' + esc(c.state)}">${esc(stageLabel(c.state))}${d ? ` · ${risk(d)} risk, ${Math.round(d.confidence * 100)}% sure` : ''}</p>
     ${pending ? `<div class="actions"><button class="primary" data-act="approve">Approve notice</button><button data-act="reject">Reject: not a problem</button></div>
       <p class="muted small">Approving records a simulated submission. Nothing is sent. Rejecting teaches this brand's future hunts.</p>` : ''}
+    ${current ? '' : '<p class="muted small">Found by an earlier hunt for this brand. Decide on it from that hunt.</p>'}
     <p class="url">${esc(c.hit?.url)} <span class="muted">(don't open this outside a sandbox)</span></p>
     <p>${esc(c.hit?.snippet)}</p>
     <p><b>${WHY_LABEL[c.state] ?? 'Why flagged'}:</b> ${esc(c.skipReason ?? d?.why ?? 'not classified')}</p>
@@ -276,7 +287,7 @@ function renderDetail() {
     ${c.notice ? `<details class="fold" open><summary>Drafted notice</summary><pre>${esc(c.notice)}</pre></details>` : ''}
     ${c.approval ? `<p class="state-${esc(c.state)}">${c.approval.decision === 'approve' ? 'Approved. A simulated submission was recorded; nothing was sent.' : "Rejected. Saved so this brand's future hunts learn from it."}</p>` : ''}
     ${c.recheck ? `<p>Follow-up: ${esc(c.recheck.result === 'relisted' ? 'listed again' : 'taken down')}</p>` : ''}
-    ${c.approval?.decision === 'approve' ? '<div class="actions"><span class="muted small">What happened afterwards?</span><button data-act="resolved">It was taken down</button><button data-act="relisted">It came back</button></div>' : ''}
+    ${current && c.approval?.decision === 'approve' ? '<div class="actions"><span class="muted small">What happened afterwards?</span><button data-act="resolved">It was taken down</button><button data-act="relisted">It came back</button></div>' : ''}
   </div>`
   setHtml($('caseDetail'), html)
   setHtml($('panelBody'), html)
@@ -333,10 +344,8 @@ const costNote = () => (config.billed.length ? 'Real money.' : config.source ===
 
 function renderBilling() {
   const real = config.billed.length > 0
-  $('billingNote').hidden = !real && config.source !== 'tape'
-  if (!real && config.source === 'tape') $('billingNote').innerHTML = '<b>Recorded demo.</b> These results come from a made-up tape, not the web. Set NIM_API_KEY to search for real.'
-  $('billingNote').classList.toggle('real', real)
-  if (real) $('billingNote').innerHTML = `<b>Real money.</b> ${esc(config.billed.join(', '))} ${config.billed.length === 1 ? 'is' : 'are'} charged by OpenAI to the account of the configured API key. Customs stops at your limit, but set a cap in your OpenAI account too.`
+  $('billingNote').hidden = config.source !== 'tape'
+  if (config.source === 'tape') $('billingNote').innerHTML = '<b>Recorded demo.</b> These results come from a made-up tape, not the web. Set NIM_API_KEY to search for real.'
   if (config.source === 'luna') document.querySelector('[name=budgetUsd]').value = '1.00'
   $('spendLimit').hidden = config.source === 'spiders'
   $('budgetHelp').textContent = real

@@ -27,3 +27,18 @@ test('a listing sits in the part of the web for where it was found', () => {
   knots.forEach((k: any, i: number) => expect(layout.radials[k.radial].surface).toBe(surfaces[i % 5]))
   expect(layout.radials[createLayout('x').place('c', 'unknown-surface').radial]).toBeDefined()
 })
+
+test('one busy surface spreads over the whole web instead of leaving part of it bare', () => {
+  const layout = createLayout('hunt_a')
+  const knots = Array.from({ length: 400 }, (_, i) => layout.place(`case_${i}`, 'marketplace'))
+  const used = new Set(knots.map((k: any) => layout.radials[k.radial].surface))
+  expect(used.size).toBe(5)
+  expect(new Set(knots.map((k: any) => k.id)).size).toBe(400)
+})
+
+test('spiders run from green to red as the risk rises', () => {
+  const color = (globalThis as any).WebRiskColor
+  expect(color(0.5)).toBe('hsl(120 85% 55%)')
+  expect(color(0.75)).toBe('hsl(60 85% 55%)')
+  expect(color(1)).toBe('hsl(0 85% 55%)')
+})
