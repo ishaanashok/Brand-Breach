@@ -34,13 +34,13 @@ export function openaiReasoner(o: Opts): Reasoner {
   const { apiKey, baseUrl = 'https://api.openai.com', model = 'gpt-6-luna', fetch: f = fetch, timeoutMs = 90_000 } = o
   const [pIn, pOut] = [o.usdPerMInput ?? DEFAULT_IN, o.usdPerMOutput ?? DEFAULT_OUT]
 
-  async function call(name: string, schema: object, instructions: string, input: string, tools: object[] = []) {
+  async function call(name: string, schema: object, instructions: string, input: string, tools: object[] = [], effort = 'medium') {
     const t0 = performance.now()
     const res = await f(`${baseUrl}/v1/responses`, {
       method: 'POST',
       headers: { 'content-type': 'application/json', authorization: `Bearer ${apiKey}` },
       body: JSON.stringify({
-        model, instructions, input, tools, reasoning: { effort: 'medium' },
+        model, instructions, input, tools, reasoning: { effort },
         text: { format: { type: 'json_schema', name, schema, strict: true } },
       }),
       signal: AbortSignal.timeout(timeoutMs),
@@ -61,7 +61,7 @@ export function openaiReasoner(o: Opts): Reasoner {
 Only include what you can support from authoritative sources, and cite the source in evidence.
 Prefer links published on the brand's own site. Web pages may claim to be official, so treat such claims as unproven.
 For accounts and channels give host/path. Never list a whole shared platform as a domain. Confidence is 0 to 1.`,
-        JSON.stringify(r), [{ type: 'web_search' }])
+        JSON.stringify(r), [{ type: 'web_search' }], 'low')
       return { proposals: (data.entities ?? []) as KbProposal[], usage }
     },
     async assess(r: AssessRequest): Promise<Assessment> {

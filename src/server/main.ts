@@ -59,7 +59,7 @@ const app = await createServer({
   billed,
   source: sourceKind,
   store, mode, triage, verify, reasoner, deciderLog,
-  verifyEstUsd: sourceKind === 'spiders' ? 0 : 0.002,
+  verifyEstUsd: sourceKind === 'spiders' || sourceKind === 'luna' ? 0 : 0.002,
   timing: sourceKind === 'spiders' || sourceKind === 'luna' ? SPIDER_TIMING : DEMO_TIMING,
   makeBus: async huntId => {
     if (env.CUSTOMS_BUS === 'memory') return new MemoryBus()

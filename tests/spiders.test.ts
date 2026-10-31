@@ -291,3 +291,29 @@ test('a page OpenAI tagged in a citation is one page with its untagged source', 
   ] })
   expect(items.map(i => [i.url, i.title])).toEqual([['https://a.example/x', 'A'], ['https://b.example/y?id=1', 'https://b.example/y?id=1']])
 })
+
+test('verification runs side by side, best page first, within the budget', async () => {
+  const store = new MemoryStore()
+  const huntId = 'h-par'
+  const input = { brand: 'Acme', keywords: [], officialDomains: [], authorizedSellers: [], budgetUsd: 1, precision: 'balanced' } as any
+  await store.hunt(huntId).init(huntId, input, Date.now(), 'd')
+  const urls = Array.from({ length: 12 }, (_, i) => `https://x${i}.example/`)
+  for (const [i, url] of urls.entries()) {
+    const k = store.kase(`c${i}`)
+    await k.report(`c${i}`, 'acme', huntId, { url, surface: 'domains', title: 't', snippet: 's' } as any, 'domains', Date.now())
+    await k.setTriage({ answers: [], deciderId: 'd', usd: 0, latencyMs: 1, score: 0.9 - i / 100, confidence: 0.9, why: '' })
+    await store.hunt(huntId).addCase(`c${i}`)
+  }
+  let now = 0, most = 0
+  const verify: any = { id: 'd', caps: {}, price: { usdPerMInput: 0 }, async decide() {
+    most = Math.max(most, ++now)
+    await Bun.sleep(5)
+    now--
+    return { answers: [], deciderId: 'd', usage: { inputTokens: 0, usd: 0.01, latencyMs: 1 } }
+  } }
+  await verifyTick({ huntId, input, brandSlug: 'acme', store, me: { send: async () => {} } as any, verify, estUsd: 0 })
+  const h = await store.hunt(huntId).snapshot()
+  expect(most).toBe(8)
+  expect(h.counters.shortlisted).toBe(12)
+  expect(h.spent).toBeCloseTo(0.12)
+})

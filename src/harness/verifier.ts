@@ -8,6 +8,7 @@ import { REVIEW_CHANNEL, type Participant } from '../relay/types'
 import type { Store } from '../store/types'
 
 const VERIFIED_AT = 0.5
+const PARALLEL = 8 // The shared decider slots still limit a local classifier.
 
 export type VerifierDeps = {
   huntId: string; input: HuntInput; brandSlug: string; store: Store; me: Participant
@@ -35,9 +36,13 @@ export async function verifyTick(d: VerifierDeps): Promise<number> {
       group.map(c => ({ id: c.id, p: c.triage!.score, severity: 1 + (c.triage!.score > 0.8 ? 1 : 0), estCostUsd: d.estUsd })),
       { threshold, remainingUsd: remaining },
     )
-    for (const p of pick) {
-      if (await verifyOne(d, byId.get(p.id)!)) done++
-    }
+    // Best first: each worker takes the next page, and the Hunt actor keeps the budget safe.
+    let next = 0
+    await Promise.all(Array.from({ length: Math.min(PARALLEL, pick.length) }, async () => {
+      while (next < pick.length) {
+        if (await verifyOne(d, byId.get(pick[next++]!.id)!)) done++
+      }
+    }))
   }
   return done
 }
