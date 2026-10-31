@@ -80,6 +80,9 @@ export const kase = {
   shortlist(s: CaseState): Step<CaseState, boolean> {
     return s.state === 'triaged' ? [v(s, { state: 'shortlisted' }), true] : [s, false]
   },
+  addEvidence(s: CaseState, evidenceText: string): Step<CaseState, null> {
+    return s.hit ? [v(s, { hit: { ...s.hit, evidenceText } }), null] : [s, null]
+  },
   setVerification(s: CaseState, r: Verification): Step<CaseState, null> {
     if (s.state !== 'shortlisted') return [s, null]
     return [v(s, { verification: r, state: r.verified ? 'verified' : 'cleared' }), null]

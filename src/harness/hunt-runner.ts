@@ -18,6 +18,8 @@ import { verifyTick } from './verifier'
 export type Timing = { scoutDelayMs: number; tickMs: number; cooldownMs: number; verifyMs: number }
 const REASONER_SLOTS = ['reasoner-1', 'reasoner-2']
 export const DEMO_TIMING: Timing = { scoutDelayMs: 1500, tickMs: 8000, cooldownMs: 20_000, verifyMs: 2000 }
+/** Real agents wait on the web and the models, so pausing between steps only adds to that. */
+export const SPIDER_TIMING: Timing = { scoutDelayMs: 200, tickMs: 1500, cooldownMs: 2000, verifyMs: 750 }
 
 export type RunnerDeps = {
   store: Store; bus: Bus; source: Source; triage: Decider; verify: Decider
@@ -116,14 +118,15 @@ export class HuntRunner {
     this.every(this.d.timing.tickMs, () => orch.tick())
     this.every(this.d.timing.verifyMs, () => orch.escalate())
     this.every(this.d.timing.verifyMs, async () => {
-      const n = await verifyTick({ huntId: this.huntId, input, brandSlug: this.brandSlug, store, me: verifierMe, verify: this.d.verify, estUsd: this.d.verifyEstUsd })
+      const n = await verifyTick({ huntId: this.huntId, input, brandSlug: this.brandSlug, store, me: verifierMe, verify: this.d.verify, estUsd: this.d.verifyEstUsd, capture: this.d.source.capture })
       const now = await store.hunt(this.huntId).snapshot()
       if (now.status === 'paused') this.d.source.touch?.()
       const over = this.d.source.over?.() ?? null
       if (n === 0 && !this.reasoners.size && (over ? !(await this.hasUnclassified()) : await orch.finished()) && !(await this.hasTriaged()) && !(await orch.escalations()).length) {
         const h = await store.hunt(this.huntId).snapshot()
         if (h.status !== 'running') return
-        if (over) await store.hunt(this.huntId).log(`Finished: ${over}.`, Date.now())
+        const caveat = this.d.source.caveat?.()
+        await store.hunt(this.huntId).log(`Finished: ${over ?? 'every lane has been searched'}.${caveat ? ` ${caveat}` : ''}`, Date.now())
         await store.hunt(this.huntId).setStatus('done')
       }
     })

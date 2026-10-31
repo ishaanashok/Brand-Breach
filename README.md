@@ -75,7 +75,9 @@ With no `CUSTOMS_STORE` or `CUSTOMS_BUS` set, state lives in Durable Actors and 
 | `CUSTOMS_STORE` | `file`, anything else | actors | `file` keeps state in `.customs/actors` |
 | `CUSTOMS_BUS` | `memory`, anything else | Relay | `memory` is an in-process bus |
 | `CUSTOMS_SOURCE` | `spiders`, `live`, `tape` | `spiders` with `NIM_API_KEY`, else `tape` | `spiders` is GLM on the real web and never falls back to the tape. `live` is OpenAI web search, which can |
-| `NIM_API_KEY`, `NIM_BASE_URL`, `NIM_MODEL` | | model `z-ai/glm-5.3-flash` | NVIDIA NIM credentials and model |
+| `NIM_API_KEY`, `NIM_BASE_URL` | | | NVIDIA NIM credentials |
+| `NIM_MODEL` | | `nvidia/nemotron-3.5-bolt-e4b` | Fast model for the spiders. About 1s a turn when measured |
+| `NIM_KB_MODEL` | | `z-ai/glm-5.3-flash` | Builds the knowledge base at low reasoning. Gets 45s, then the spider model takes over |
 | `CUSTOMS_STATE_DIR` | path | `.customs` | Where the file store keeps state |
 | `DECIDER_MODE` | `laya`, `target`, `hybrid`, `shadow`, `mock` | `laya` | Who triages and verifies. `target` uses OpenAI, `hybrid` uses Laya then OpenAI, `shadow` compares both. All but `mock` need the [sidecar](sidecar/README.md) or a fallback to it. `laya` has no fallback |
 | `LAYA_URL` | URL | `http://localhost:8000` | Where the sidecar listens |
@@ -91,6 +93,7 @@ The budget is a spending limit for one hunt, not money you pay into Customs. Bef
 
 - **Offline demo and `mock` modes:** no money moves. Search costs come from the tape's `searchUsd`, and the mock reasoner charges a pretend amount, so you can see the budget logic at work.
 - **GLM on NIM:** runs on NVIDIA's credits, so money can't stop these hunts and the form asks for a search limit instead (40 by default). A hunt ends when it has used those searches, when 5 agents in a row find nothing new, or when no agent has started for a minute. Agents share what the hunt has covered: a search that repeats an earlier one is refused, results already seen are hidden, no page is read twice, and at most 3 pages are read per site. Pages found by earlier hunts for the brand count as covered.
+- **What gets classified:** every new search result goes straight to Laya as it arrives, so agents only choose where to look. A page is only fetched once its search result earns a closer look, and that text is what the second check reads.
 - **Search quality:** without a key, search scrapes DuckDuckGo at one search every 3 seconds, and DuckDuckGo may still block a machine that searches a lot. Bing is the fallback, but it often ignores most of a query, so its off-topic results are dropped and a hunt can find little. Set `BRAVE_SEARCH_API_KEY` to use Brave's search API instead. The hunt's last line says when DuckDuckGo wasn't answering.
 - **Real providers:** the money comes from whichever `OPENAI_API_KEY` you configure, billed by OpenAI to that account. That covers `/v1/decisions`, the reasoner and live search. Customs has no billing of its own and never handles a payment.
 - **Not counted:** Laya on your own machine (free per call), and any charges from hosting Durable Actors or Agent Relay.

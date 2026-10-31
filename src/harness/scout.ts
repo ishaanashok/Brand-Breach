@@ -10,7 +10,7 @@ import { laneKey, type Decider, type Hit, type HuntInput, type Lane, type Lead, 
 import { HUNT_CHANNEL, type Bus, type Participant } from '../relay/types'
 import type { Store } from '../store/types'
 import { estimateTokens } from '../deciders/util'
-import type { SearchResult, Source } from './source'
+import type { OnHits, SearchResult, Source } from './source'
 
 const LEAD_ROUTE: Record<LeadKind, Surface> = { seller: 'marketplace', domain: 'domains', wallet: 'channels', channel: 'channels' }
 const TRIAGE_TIMEOUT_MS = 30_000 // A local model loading or busy with other scouts can take a while.
@@ -79,12 +79,12 @@ export class Scout {
 
       const lead = this.leads.shift()
       if (lead) {
-        await this.iteration(() => this.d.source.followLead(lead, this.lane))
+        await this.iteration(onHits => this.d.source.followLead(lead, this.lane, onHits))
       } else if (exhausted) {
         await Bun.sleep(this.d.delayMs)
         continue
       } else {
-        const r = await this.iteration(() => this.d.source.search(this.lane))
+        const r = await this.iteration(onHits => this.d.source.search(this.lane, onHits))
         dry = r && r.found > 0 && r.fresh === 0 ? dry + 1 : 0
         if (r && (r.failed || r.found === 0 || dry >= DRY_LIMIT)) {
           exhausted = true
@@ -96,13 +96,23 @@ export class Scout {
   }
 
   /** Reserve, search, triage, report. Returns what the search yielded, or null if it could not spend. */
-  private async iteration(search: () => Promise<SearchResult>): Promise<{ found: number; fresh: number; failed?: boolean } | null> {
+  private async iteration(search: (onHits: OnHits) => Promise<SearchResult>): Promise<{ found: number; fresh: number; failed?: boolean } | null> {
     const key = laneKey(this.lane)
     const r = await this.hunt.reserve(this.name, this.d.source.estUsd, Date.now())
     if (!r.ok) return null
     let result: SearchResult
+    let found = 0
+    let fresh = 0
+    const handle: OnHits = async hits => {
+      await this.refreshRules()
+      const firsts = await Promise.all(hits.map(h => this.handleHit({ ...h, lane: key })))
+      const n = firsts.filter(Boolean).length
+      found += hits.length
+      fresh += n
+      return n
+    }
     try {
-      result = await search()
+      result = await search(handle)
       await this.hunt.settle(r.id!, result.usd)
     } catch (err) {
       await this.hunt.settle(r.id!, 0)
@@ -111,11 +121,15 @@ export class Scout {
     }
     await this.d.store.playbook().update(key, { tries: 1, hits: 0, costUsd: result.usd })
     await this.brand.recordLaneOutcome(key, { tries: 1, hits: 0, costUsd: result.usd })
+    await handle(result.hits)
+    for (const { lead, from } of result.leads ?? []) await this.shareLead(lead, canonicalUrl(from))
+    return { found, fresh }
+  }
+
+  private async refreshRules() {
     const b = await this.brand.snapshot()
     this.rules.whitelist = b.whitelist
     this.rules.kb = kbEntities(b)
-    const firsts = await Promise.all(result.hits.map(h => this.handleHit({ ...h, lane: key })))
-    return { found: result.hits.length, fresh: firsts.filter(Boolean).length }
   }
 
   private async handleHit(hit: Hit): Promise<boolean> {
@@ -133,9 +147,7 @@ export class Scout {
 
   /** A crash can land between reporting a case and triaging it, and a later report is only a duplicate. */
   async recover(c: CaseState) {
-    const b = await this.brand.snapshot()
-    this.rules.whitelist = b.whitelist
-    this.rules.kb = kbEntities(b)
+    await this.refreshRules()
     await this.assess(c.id, c.hit!, c.hit!.url)
   }
 

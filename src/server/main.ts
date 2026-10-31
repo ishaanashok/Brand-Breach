@@ -1,6 +1,7 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { deciderFromConfig } from '../deciders/config'
-import { DEMO_TIMING } from '../harness/hunt-runner'
+import { sharedSlots } from '../deciders/util'
+import { DEMO_TIMING, SPIDER_TIMING } from '../harness/hunt-runner'
 import { liveSource } from '../harness/live'
 import { nimClient, spiderSource } from '../harness/spiders'
 import { autoFallback, type Source } from '../harness/source'
@@ -25,8 +26,9 @@ const store: Store = env.CUSTOMS_STORE === 'file' ? new MemoryStore(`${STATE_DIR
 const tape = await loadTape()
 
 const log = (s: string) => console.log(`[customs] ${s}`)
+const LOCAL_DECIDER_SLOTS = 3
 const deciderLog: DeciderLog = { fallbacks: [], shadow: [] }
-const { triage, verify, mode } = deciderFromConfig(env, {
+const { triage: rawTriage, verify: rawVerify, mode } = deciderFromConfig(env, {
   onFallback: (from, error) => { deciderLog.fallbacks.push({ at: Date.now(), from, error }); log(`decider ${from} fell through: ${error}`) },
   onShadow: l => { deciderLog.shadow.push({ agreed: l.agreed }); log(`shadow ${l.primary} vs ${l.shadow}: ${l.agreed ? 'agree' : 'DISAGREE'}`) },
 })
@@ -43,6 +45,9 @@ const billed = [
   env.CUSTOMS_SOURCE === 'live' && 'search',
 ].filter((b): b is string => Boolean(b))
 
+const slots = sharedSlots(LOCAL_DECIDER_SLOTS)
+const triage = slots(rawTriage)
+const verify = slots(rawVerify)
 const sourceKind = env.CUSTOMS_SOURCE ?? (env.NIM_API_KEY ? 'spiders' : 'tape')
 const SURFACE_LABEL: Record<string, string> = { social: 'Social media', marketplace: 'Marketplaces', video: 'Video sites', domains: 'Websites', channels: 'Group chats' }
 const spiders = new Map<string, Source>()
@@ -52,7 +57,7 @@ const app = await createServer({
   source: sourceKind,
   store, mode, triage, verify, reasoner, deciderLog,
   verifyEstUsd: sourceKind === 'spiders' ? 0 : 0.002,
-  timing: DEMO_TIMING,
+  timing: sourceKind === 'spiders' ? SPIDER_TIMING : DEMO_TIMING,
   makeBus: async huntId => {
     if (env.CUSTOMS_BUS === 'memory') return new MemoryBus()
     const f = stateFile(huntId)

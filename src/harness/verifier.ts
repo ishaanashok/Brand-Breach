@@ -12,6 +12,7 @@ const VERIFIED_AT = 0.5
 export type VerifierDeps = {
   huntId: string; input: HuntInput; brandSlug: string; store: Store; me: Participant
   verify: Decider; estUsd: number
+  capture?: (url: string) => Promise<string | undefined>
 }
 
 /** Server-side stage 2: only shortlisted cases earn richer evidence and a second decision. */
@@ -49,7 +50,15 @@ async function verifyOne(d: VerifierDeps, c: CaseState): Promise<boolean> {
   if (!r.ok) return false
   if (!(await kase.shortlist())) { await hunt.settle(r.id!, 0); return false }
   await hunt.bump('shortlisted')
-  const hit = c.hit!
+  let hit = c.hit!
+  // Only pages that earned a closer look get fetched.
+  if (!hit.evidenceText && d.capture) {
+    const evidenceText = await d.capture(hit.url)
+    if (evidenceText) {
+      await kase.addEvidence(evidenceText)
+      hit = { ...hit, evidenceText }
+    }
+  }
   const text = [hitText(hit), hit.evidenceText && `Captured evidence: ${hit.evidenceText}`].filter(Boolean).join('\n')
   try {
     const res = await d.verify.decide({ text }, verifyQuestions(d.input.brand), { timeoutMs: 30_000 })

@@ -1,5 +1,8 @@
 import { expect, test } from 'bun:test'
-import { nimClient, runSpider, spiderSource, webMemory, type ChatMessage } from '../src/harness/spiders'
+import { SPIDER_MODEL, nimClient, runSpider, spiderSource, webMemory, type ChatMessage } from '../src/harness/spiders'
+import { sharedSlots } from '../src/deciders/util'
+import { verifyTick } from '../src/harness/verifier'
+import { MemoryStore } from '../src/store/memory'
 import { glmKbReasoner } from '../src/reasoners/glm'
 import { htmlToPage, isPrivateAddress, onTopic, parseBing, parseBrave, parseDuckDuckGo, readPage, searchDegraded, searchOnce } from '../src/harness/web'
 
@@ -91,12 +94,12 @@ test('a hunt ends when agents stop finding anything new, or nothing is left to s
 
   let t = 0
   const idle = spiderSource({ brand: 'Acme', officialDomains: [], nim, now: () => t })
-  t = 59_000
+  t = 19_000
   expect(idle.over!()).toBeNull()
   idle.touch!()
-  t = 118_000
+  t = 38_000
   expect(idle.over!()).toBeNull()
-  t = 120_000
+  t = 40_000
   expect(idle.over!()).toContain('anywhere new')
 })
 
@@ -112,7 +115,7 @@ test('a resumed hunt keeps its count and does not report old pages again', async
 test('NIM is asked for low reasoning, and rate limits are retried', async () => {
   const bodies: any[] = []
   let n = 0
-  const nim = nimClient({ apiKey: 'k', fetch: (async (_: string, init: any) => {
+  const nim = nimClient({ apiKey: 'k', model: 'z-ai/glm-5.3-flash', fetch: (async (_: string, init: any) => {
     bodies.push(JSON.parse(init.body))
     return ++n === 1 ? new Response('busy', { status: 429 }) : Response.json({ choices: [{ message: { role: 'assistant', content: 'hi' } }], usage: { prompt_tokens: 1000000, completion_tokens: 0 } })
   }) as any, usdPerMInput: 2 })
@@ -122,6 +125,66 @@ test('NIM is asked for low reasoning, and rate limits are retried', async () => 
   expect(r.usd).toBe(2)
   expect(n).toBe(2)
 }, 10_000)
+
+test('the fast spider model is the default and is not sent a reasoning setting', async () => {
+  const bodies: any[] = []
+  const nim = nimClient({ apiKey: 'k', fetch: (async (_: string, init: any) => { bodies.push(JSON.parse(init.body)); return Response.json({ choices: [{ message: { role: 'assistant', content: 'hi' } }] }) }) as any })
+  await nim.chat([{ role: 'user', content: 'x' }])
+  expect(bodies[0].model).toBe(SPIDER_MODEL)
+  expect(bodies[0].reasoning_effort).toBeUndefined()
+})
+
+test('a slow reasoning model hands the knowledge base to the fast one', async () => {
+  const fast = scripted([{ role: 'assistant', content: '{"entries":[{"kind":"domain","value":"acme.com","confidence":0.9}]}' }])
+  const slow = { model: 'glm', chat: async () => { throw new Error('timed out') } }
+  const { proposals } = await glmKbReasoner({ nim: slow as any, fast: fast as any, search }).buildKb({ brand: 'Acme', keywords: [], officialDomains: [], authorizedSellers: [] })
+  expect(proposals.map(p => p.value)).toEqual(['acme.com'])
+})
+
+test('one slow page does not hold up the others in a turn', async () => {
+  const order: string[] = []
+  const nim = scripted([{ role: 'assistant', content: null, tool_calls: [call('read_page', { url: 'https://a.shop/' }), call('read_page', { url: 'https://b.shop/' })] }])
+  await runSpider({ ...base, nim, read: async url => { if (url.includes('a.shop')) await Bun.sleep(30); order.push(url); return { url, title: 't', text: 'x' } } })
+  expect(order).toEqual(['https://b.shop/', 'https://a.shop/'])
+  expect(nim.sent[1]!.filter(m => m.role === 'tool').length).toBe(2)
+})
+
+test('every new result goes straight to the classifier, once, with leads kept', async () => {
+  const items = async () => [{ url: 'https://www.a.shop/x', title: 'A', snippet: 's' }, { url: 'https://b.shop/', title: 'B', snippet: 's' }]
+  const nim = scripted([
+    { role: 'assistant', content: null, tool_calls: [call('web_search', { query: 'first' })] },
+    { role: 'assistant', content: null, tool_calls: [call('report', { candidates: [{ url: 'https://a.shop/x', leads: [{ kind: 'domain', value: 'c.shop' }] }] })] },
+  ])
+  const got: string[] = []
+  const s = spiderSource({ brand: 'Acme', officialDomains: [], nim, search: items, read: async () => { throw new Error('no page should be read') } })
+  const r = await s.search(s.lanes('domains', ['a'])[0]!, async hits => { await Bun.sleep(5); got.push(...hits.map(h => h.url)); return hits.length })
+  expect(got).toEqual(['https://www.a.shop/x', 'https://b.shop/'])
+  expect(r.hits).toEqual([])
+  expect(r.leads).toEqual([{ lead: { kind: 'domain', value: 'c.shop' }, from: 'https://a.shop/x' }])
+})
+
+test('a shortlisted result gets its page fetched before the second check', async () => {
+  const store = new MemoryStore()
+  const input = { brand: 'Acme', keywords: [], officialDomains: [], authorizedSellers: [], budgetUsd: 1, precision: 'balanced' as const }
+  await store.hunt('h').init('h', input, 1, 'x')
+  const hit = { url: 'https://a.shop/x', surface: 'domains' as const, title: 'A', snippet: 's' }
+  await store.kase('c').report('c', 'acme', 'h', hit, 'domains', 1)
+  await store.hunt('h').addCase('c')
+  await store.kase('c').setTriage({ answers: [], deciderId: 'd', usd: 0, latencyMs: 1, score: 0.99, confidence: 0.9, why: 'y' })
+  const texts: string[] = []
+  const verify = { id: 'v', price: { usdPerMInput: 0 }, decide: async (e: any) => { texts.push(e.text); return { answers: [], deciderId: 'v', usage: { usd: 0, latencyMs: 1 } } } } as any
+  await verifyTick({ huntId: 'h', input, brandSlug: 'acme', store, me: { send: async () => {} } as any, verify, estUsd: 0, capture: async () => 'page words' })
+  expect(texts[0]).toContain('page words')
+  expect((await store.kase('c').snapshot()).hit!.evidenceText).toBe('page words')
+})
+
+test('a burst of decisions waits its turn', async () => {
+  let running = 0, peak = 0
+  const d = { id: 'x', price: { usdPerMInput: 0 }, decide: async () => { peak = Math.max(peak, ++running); await Bun.sleep(5); running--; return {} } } as any
+  const slow = sharedSlots(2)(d)
+  await Promise.all([1, 2, 3, 4, 5].map(() => slow.decide({ text: '' }, [])))
+  expect(peak).toBe(2)
+})
 
 test('search result pages are parsed into real destinations', () => {
   const ddg = `<div class="result__body"><a rel="nofollow" class="result__a" href="//duckduckgo.com/l/?uddg=https%3A%2F%2Ffake.shop%2Fa&amp;rut=1">Fake <b>Shop</b></a><a class="result__snippet" href="x">Cheap &amp; good</a></div>`

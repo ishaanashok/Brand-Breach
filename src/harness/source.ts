@@ -1,20 +1,30 @@
 import type { Hit, Lane, Lead } from '../core/types'
 
-export type SearchResult = { hits: Hit[]; usd: number }
+export type SearchResult = {
+  hits: Hit[]; usd: number
+  /** Links found on pages that were already sent on by OnHits. */
+  leads?: { lead: Lead; from: string }[]
+}
+/** Takes hits as soon as they're found, and says how many were new. */
+export type OnHits = (hits: Hit[]) => Promise<number>
 
 /** Live and recorded sources share this type, so the pipeline cannot tell them apart. */
 export interface Source {
   id: string
   /** Upper bound reserved before each search. */
   estUsd: number
-  search(lane: Lane): Promise<SearchResult>
-  followLead(lead: Lead, lane: Lane): Promise<SearchResult>
+  search(lane: Lane, onHits?: OnHits): Promise<SearchResult>
+  followLead(lead: Lead, lane: Lane, onHits?: OnHits): Promise<SearchResult>
   /** Every lane a scout on this surface may be steered to. */
   lanes(surface: Lane['source'], keywords: string[]): Lane[]
   /** Hands back what was already covered, after a restart or by an earlier hunt for this brand. */
   restore?(known: { searches: number; urls: string[] }): void
   /** Why this source has nothing left to do, or null while it still has. */
   over?(): string | null
+  /** Page text for a shortlisted hit, which until then is only a search result. */
+  capture?(url: string): Promise<string | undefined>
+  /** Anything that limited this hunt's results, for its last line. */
+  caveat?(): string | null
   /** Paused time doesn't count as having nothing to do. */
   touch?(): void
 }

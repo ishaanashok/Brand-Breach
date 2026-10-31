@@ -81,7 +81,8 @@ export function parseBrave(body: any): SearchItem[] {
     .map((r: any) => ({ url: r.url, title: stripTags(String(r.title ?? '')), snippet: stripTags(String(r.description ?? '')) }))
 }
 
-const MIN_GAP_MS = 3000 // Searching faster than this got the machine blocked by DuckDuckGo.
+const MIN_GAP_MS = 3000 // Slows DuckDuckGo's blocking of this machine, but doesn't prevent it.
+const API_GAP_MS = 1100 // Brave's free plan allows one request a second.
 const COOL_DOWN_MS = 5 * 60_000
 const CACHE_SIZE = 500
 const cache = new Map<string, SearchItem[]>()
@@ -106,7 +107,8 @@ export async function searchOnce(query: string, o: { f?: Fetch; braveKey?: strin
   if (now() >= primaryRestsUntil) {
     try {
       const res = await f(`https://html.duckduckgo.com/html/?q=${encodeURIComponent(query)}`, { headers, signal: AbortSignal.timeout(12_000) })
-      if (!res.ok) throw new Error(`DuckDuckGo ${res.status}`)
+      // 202 is its "are you a robot" page, not results.
+      if (!res.ok || res.status === 202) throw new Error(`DuckDuckGo ${res.status}`)
       const items = parseDuckDuckGo(await res.text())
       if (items.length) return items.slice(0, 10)
       failures.push('DuckDuckGo returned nothing')
@@ -129,7 +131,7 @@ export function webSearch(query: string): Promise<SearchItem[]> {
   const known = cache.get(key)
   if (known) return Promise.resolve(known)
   const run = queue.then(async () => {
-    const wait = lastSearch + MIN_GAP_MS - Date.now()
+    const wait = lastSearch + (process.env.BRAVE_SEARCH_API_KEY ? API_GAP_MS : MIN_GAP_MS) - Date.now()
     if (wait > 0) await Bun.sleep(wait)
     lastSearch = Date.now()
     const items = await searchOnce(query, { braveKey: process.env.BRAVE_SEARCH_API_KEY })
