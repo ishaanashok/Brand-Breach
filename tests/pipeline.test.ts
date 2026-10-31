@@ -168,6 +168,20 @@ test('a scout that loses the store for a moment comes back and the hunt finishes
   expect(h.caseIds.length).toBeGreaterThan(10)
 })
 
+test('a decision on a finished hunt works from a runner that never joined the bus', async () => {
+  const store = new MemoryStore()
+  const r1 = new HuntRunner('h10', await deps(store))
+  await r1.start(input)
+  await until(async () => (await store.hunt('h10').snapshot()).status === 'done')
+  await r1.stop()
+  const s = await store.hunt('h10').snapshot()
+  const cases = await Promise.all(s.caseIds.map(id => store.kase(id).snapshot()))
+  const c = cases.find(x => x.state === 'awaiting_approval')!
+  const fresh = new HuntRunner('h10', await deps(store))
+  expect((await fresh.decide(c.id, 'approve', 'reviewer')).changed).toBe(true)
+  expect((await store.kase(c.id).snapshot()).state).toBe('approved')
+})
+
 test('second run remembers lanes and reaches a verified finding for less', async () => {
   const store = new MemoryStore()
   // The verifier must outpace scouts here, or spend at first finding only measures timer order.

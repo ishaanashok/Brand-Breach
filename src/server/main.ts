@@ -36,8 +36,15 @@ const stateFile = (huntId: string) => `${STATE_DIR}/relay-${huntId}.json`
 const kbFixtures = await Bun.file(new URL('../../tapes/kb.json', import.meta.url).pathname).json()
 const reasoner = reasonerFromConfig(env, kbFixtures)
 
+const billed = [
+  ['target', 'hybrid', 'shadow'].includes(mode) && 'decisions',
+  reasoner.id !== 'mock-reasoner' && 'reasoning',
+  env.CUSTOMS_SOURCE === 'live' && 'search',
+].filter((b): b is string => Boolean(b))
+
 const app = await createServer({
   port: Number(env.PORT ?? 3000),
+  billed,
   store, mode, triage, verify, reasoner, deciderLog,
   verifyEstUsd: 0.002,
   timing: DEMO_TIMING,

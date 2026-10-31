@@ -53,13 +53,23 @@ With no `CUSTOMS_STORE` or `CUSTOMS_BUS` set, state lives in Durable Actors and 
 | `CUSTOMS_STORE` | `file`, anything else | actors | `file` keeps state in `.customs/actors` |
 | `CUSTOMS_BUS` | `memory`, anything else | Relay | `memory` is an in-process bus |
 | `CUSTOMS_SOURCE` | `live`, anything else | tape | `live` needs `OPENAI_API_KEY` and falls back to the tape if it finds too little |
-| `DECIDER_MODE` | `laya`, `openai`, `hybrid`, `mock` | `laya` | Who triages and verifies. `laya` needs the [sidecar](sidecar/README.md) |
+| `DECIDER_MODE` | `laya`, `target`, `hybrid`, `shadow`, `mock` | `laya` | Who triages and verifies. `target` uses OpenAI, `hybrid` uses Laya then OpenAI, `shadow` compares both. All but `mock` need the [sidecar](sidecar/README.md) or a fallback to it |
 | `LAYA_URL` | URL | `http://localhost:8000` | Where the sidecar listens |
 | `REASONER_MODE` | `openai`, `mock` | `openai` with a key, else `mock` | Who builds the knowledge base and verifies escalations |
 | `REASONER_MODEL` | model id | see `src/reasoners/openai.ts` | Reasoning model |
 | `REASONER_USD_PER_M_INPUT`, `REASONER_USD_PER_M_OUTPUT` | number | 1, 4 | **Placeholder prices.** Set real ones before trusting the budget |
 | `OPENAI_API_KEY`, `OPENAI_BASE_URL` | | | OpenAI credentials and endpoint |
 | `PORT` | number | 3000 | Dashboard port |
+
+## The budget
+
+The budget is a spending limit for one hunt, not money you pay into Customs. Before each paid step, an agent reserves its estimated cost on the Hunt actor, which refuses once the limit would be passed. The actual cost replaces the estimate afterwards.
+
+- **Offline demo and `mock` modes:** no money moves. Search costs come from the tape's `searchUsd`, and the mock reasoner charges a pretend amount, so you can see the budget logic at work.
+- **Real providers:** the money comes from whichever `OPENAI_API_KEY` you configure, billed by OpenAI to that account. That covers `/v1/decisions`, the reasoner and live search. Customs has no billing of its own and never handles a payment.
+- **Not counted:** Laya on your own machine (free per call), and any charges from hosting Durable Actors or Agent Relay.
+
+The dashboard says which case applies. The limit stops new spending, but it is only as accurate as the provider prices in the code, and the reasoner prices are placeholders. Set a spending cap in your OpenAI account too.
 
 ## Tests
 

@@ -32,7 +32,7 @@ export class HuntRunner {
   private stopped = false
   private loops: Promise<unknown>[] = []
   private unsub = () => {}
-  private human!: Participant
+  private human?: Participant
   private input!: HuntInput
   private brandSlug = ''
   private launching: Promise<unknown> = Promise.resolve()
@@ -198,12 +198,13 @@ export class HuntRunner {
     const brand = store.brand(this.brandSlug)
     await brand.addLabel({ caseId, url: c.hit!.url, decision, deciderId: c.verification?.deciderId ?? c.triage?.deciderId ?? 'unknown', score: c.verification?.score ?? 0, seller: c.hit!.seller })
     if (decision === 'reject' && c.hit!.lane) await brand.recordLaneOutcome(c.hit!.lane, { tries: 0, hits: -1, costUsd: 0 })
-    await this.human.send(REVIEW_CHANNEL, encodeTag('DECISION', { caseId, decision })).catch(() => {})
+    // A runner rebuilt only to record a decision on a finished hunt never joined the bus.
+    await this.human?.send(REVIEW_CHANNEL, encodeTag('DECISION', { caseId, decision })).catch(() => {})
     return r
   }
 
   /** Human controls travel the same channel the agents use. */
-  async humanSay(to: string, text: string) { await this.human.send(to, text) }
+  async humanSay(to: string, text: string) { await this.human?.send(to, text) }
   channel = HUNT_CHANNEL
 
   async stop() {

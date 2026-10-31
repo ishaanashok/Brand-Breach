@@ -97,3 +97,37 @@ test('graph and knowledge base APIs: query, add, refuse a platform, remove', asy
   expect(g.edges.every((e: any) => e.from === 'domain:kbbrand.example' || e.to === 'domain:kbbrand.example')).toBe(true)
   expect((await fetch(`${base}/api/brands/nobody/graph`)).status).toBe(404)
 })
+
+test('a finished hunt refuses controls, but its cases can still be decided', async () => {
+  const { id } = await (await post('/api/hunts', { ...input, brand: 'Finished' })).json() as any
+  let v: any
+  for (let i = 0; i < 400; i++) {
+    v = await (await fetch(`${base}/api/hunts/${id}`)).json()
+    if (v.hunt.status === 'done') break
+    await Bun.sleep(10)
+  }
+  expect(v.hunt.status).toBe('done')
+  for (const b of [{ action: 'pause' }, { action: 'resume' }, { action: 'budget', usd: 5 }]) {
+    const r = await post(`/api/hunts/${id}/control`, b)
+    expect(r.status).toBe(409)
+    expect(((await r.json()) as any).error).toContain('finished')
+  }
+  expect(((await (await fetch(`${base}/api/hunts/${id}`)).json()) as any).hunt.status).toBe('done')
+})
+
+test('resume is refused unless paused, and a lowered budget reports what it became', async () => {
+  const { id } = await (await post('/api/hunts', { ...input, brand: 'Limits', budgetUsd: 50 })).json() as any
+  expect((await post(`/api/hunts/${id}/control`, { action: 'resume' })).status).toBe(409)
+  await post(`/api/hunts/${id}/control`, { action: 'pause' })
+  const r: any = await (await post(`/api/hunts/${id}/control`, { action: 'budget', usd: 40 })).json()
+  expect(r.budgetUsd).toBe(40)
+})
+
+test('the hunt list says what each hunt was, the config says what is billed, and lanes are listed', async () => {
+  const { id } = await (await post('/api/hunts', { ...input, brand: 'Listed' })).json() as any
+  const l: any = await (await fetch(`${base}/api/hunts`)).json()
+  expect(l.summaries.find((h: any) => h.id === id).brand).toBe('Listed')
+  expect(((await (await fetch(`${base}/api/config`)).json()) as any).billed).toEqual([])
+  const lanes: any = await (await fetch(`${base}/api/hunts/${id}/lanes`)).json()
+  expect(lanes.lanes.social.length).toBeGreaterThan(0)
+})

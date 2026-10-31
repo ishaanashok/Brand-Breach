@@ -22,6 +22,8 @@ export type AppConfig = {
   feedMs?: number
   /** Fallback and shadow events from the decider layer. */
   deciderLog?: DeciderLog
+  /** What this configuration pays a provider for; empty means the budget only counts simulated costs. */
+  billed?: string[]
 }
 export type DeciderLog = { fallbacks: { at: number; from: string; error: string }[]; shadow: { agreed: boolean }[] }
 export type App = { port: number; stop(): void; resumeAll(): Promise<string[]> }
@@ -117,8 +119,14 @@ export async function createServer(cfg: AppConfig): Promise<App> {
 
   async function route(req: Request, p: string): Promise<Response> {
     const body = req.method === 'POST' ? await req.json().catch(() => ({})) : null
-    if (p === '/api/config') return json({ mode: cfg.mode, triage: cfg.triage.id, verify: cfg.verify.id, reasoner: cfg.reasoner?.id ?? null, surfaces: SURFACES })
-    if (p === '/api/hunts' && req.method === 'GET') return json({ hunts: await store.playbook().listHunts() })
+    if (p === '/api/config') return json({ mode: cfg.mode, triage: cfg.triage.id, verify: cfg.verify.id, reasoner: cfg.reasoner?.id ?? null, surfaces: SURFACES, billed: cfg.billed ?? [] })
+    if (p === '/api/hunts' && req.method === 'GET') {
+      const hunts = await store.playbook().listHunts()
+      const snaps = await Promise.all(hunts.map(h => store.hunt(h).snapshot()))
+      const summaries = snaps.filter(h => h.input).sort((a, b) => b.startedAt - a.startedAt)
+        .map(h => ({ id: h.id, brand: h.input!.brand, status: h.status, startedAt: h.startedAt, spentUsd: h.spent, budgetUsd: h.input!.budgetUsd, verified: h.counters.verified }))
+      return json({ hunts, summaries })
+    }
     if (p === '/api/hunts' && req.method === 'POST') {
       const input = parseInput(body)
       if (!input) return json({ error: 'brand and a positive budget are required' }, 400)
@@ -148,21 +156,31 @@ export async function createServer(cfg: AppConfig): Promise<App> {
       return json(redactDeep({ ...buildReport(v.hunt, v.cases), history, shadow: { compared: shadow.length, disagreementRate }, fallbacks: cfg.deciderLog?.fallbacks.length ?? 0, laneStats: v.brand.laneStats }, sensitiveTerms(v.cases, v.brand.edges)))
     }
 
+    if (rest === 'lanes') {
+      const source = cfg.makeSource(1, id)
+      return json({ lanes: Object.fromEntries(SURFACES.map(s => [s, source.lanes(s, v.hunt.input!.keywords).map(l => l.strategy)])) })
+    }
+
     const hunt = store.hunt(id)
     if (rest === 'control' && body) {
       const r = runners.get(id)
+      const status = v.hunt.status
+      // A finished hunt has no scouts left, so these would only change the label on the screen.
+      if (status === 'done') return json({ error: 'This hunt has finished. Start a new one to search again.' }, 409)
+      if (body.action === 'pause' && status !== 'running') return json({ error: `A hunt that is ${status.replace('_', ' ')} cannot be paused.` }, 409)
+      if (body.action === 'resume' && status !== 'paused') return json({ error: 'Only a paused hunt can be resumed.' }, 409)
       const say = (scout: string, text: string) => r?.humanSay(`@${scout}`, text).catch(() => {})
       switch (body.action) {
         case 'pause': await hunt.setStatus('paused'); break
         case 'resume': await hunt.setStatus('running'); break
         case 'budget':
           if (!(body.usd > 0)) return json({ error: 'usd must be positive' }, 400)
-          await hunt.setBudget(body.usd)
-          break
+          return json({ ok: true, budgetUsd: await hunt.setBudget(body.usd) })
         case 'boost': {
           const scout = body.scout as Surface
           const lane = SURFACES.includes(scout) ? cfg.makeSource(1, id).lanes(scout, v.hunt.input!.keywords).find(l => l.strategy === body.strategy) : null
           if (!lane) return json({ error: 'unknown lane' }, 400)
+          if (!r) return json({ error: 'This hunt is not running on this server.' }, 409)
           await say(scout, encodeTag('STEER', { lane, reason: 'boosted by the reviewer' }))
           break
         }
@@ -195,7 +213,7 @@ export async function createServer(cfg: AppConfig): Promise<App> {
         if (body?.action === 'remove' && typeof body.id === 'string') { await client.removeKbEntity(body.id); return json({ ok: true }) }
         const e = body?.action === 'add' && ['domain', 'account', 'seller', 'channel'].includes(body.kind) && typeof body.value === 'string'
           ? entityFrom(body.kind as KbKind, body.value, 'human', 1, 'Added by the reviewer') : null
-        if (!e) return json({ error: 'not a value that can be trusted: use a brand-owned domain, or host/path for an account' }, 400)
+        if (!e) return json({ error: "That can't be marked as real. Use a website the brand owns, or host/path for an account on a shared platform." }, 400)
         await client.addKbEntity(e)
         return json({ ok: true, entity: e })
       }
