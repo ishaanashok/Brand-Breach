@@ -43,12 +43,17 @@ document.querySelectorAll('#tabs button').forEach(b => { b.onclick = () => showT
 $('goSetup').onclick = () => showTab('setup')
 function showTab(tab) {
   currentTab = tab
-  const showing = huntId || tab === 'setup' ? tab : 'noHunt'
+  const showing = huntId || tab === 'setup' || tab === 'kb' ? tab : 'noHunt'
   document.querySelectorAll('#tabs button').forEach(b => b.classList.toggle('on', b.dataset.tab === tab))
   document.querySelectorAll('main > section').forEach(s => { s.hidden = s.id !== showing })
   if (showing === 'setup') { loadHunts(); renderReturn() }
   WebView.setVisible(showing === 'web')
+  KbGraph.setVisible(showing === 'kb')
 }
+KbGraph.init($('kbCanvas'), $('kbInfo'))
+$('kbZoomIn').onclick = () => KbGraph.zoom(1.3)
+$('kbZoomOut').onclick = () => KbGraph.zoom(1 / 1.3)
+$('kbZoomFit').onclick = () => KbGraph.fit()
 
 const post = (path, body) => fetch(path, { method: 'POST', body: JSON.stringify(body ?? {}) })
 /** Every action tells the person what happened. Returns the reply, or null after showing the error. */
@@ -76,8 +81,12 @@ $('form').onsubmit = async e => {
   b.disabled = true
   b.textContent = 'Starting…'
   try {
+    // Rolex has a starter knowledge base: it is shown being gathered first, and its sites are never flagged.
+    const rolex = f.get('brand').trim().toLowerCase() === 'rolex'
+    if (rolex) await KbIntro.play($('kbIntro'))
     const res = await post('/api/hunts', {
-      brand: f.get('brand'), keywords: list(f.get('keywords')).length ? list(f.get('keywords')) : [f.get('brand').trim()], officialDomains: list(f.get('officialDomains')),
+      brand: f.get('brand'), keywords: list(f.get('keywords')).length ? list(f.get('keywords')) : [f.get('brand').trim()],
+      officialDomains: [...new Set([...list(f.get('officialDomains')), ...(rolex ? RolexKb.OFFICIAL_DOMAINS : [])])],
       authorizedSellers: list(f.get('authorizedSellers')), budgetUsd: Number(f.get('budgetUsd')), precision: f.get('precision'),
     })
     const body = await res.json()
