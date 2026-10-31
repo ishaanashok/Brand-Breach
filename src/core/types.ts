@@ -16,6 +16,8 @@ export type Hit = {
   price?: number
   listPrice?: number
   leads?: Lead[]
+  /** Key of the lane that found it, for crediting outcomes. */
+  lane?: string
   /** Richer text, standing in for sandbox capture on the tape. */
   evidenceText?: string
   /** Ground truth label on the synthetic tape, never read by the pipeline. */

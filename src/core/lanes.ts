@@ -27,10 +27,18 @@ export function rankLanes(keys: string[], stats: Record<string, LaneStat>): stri
 export function chooseSteer(o: {
   current: Lane; candidates: Lane[]; stats: Record<string, LaneStat>
   lastSteerAt: number; now: number; taken: string[]
+  cooldownMs?: number; exhausted?: string[]
 }): { lane: Lane; reason: string } | null {
-  if (o.now - o.lastSteerAt < STEER_COOLDOWN_MS) return null
+  if (o.now - o.lastSteerAt < (o.cooldownMs ?? STEER_COOLDOWN_MS)) return null
   const curKey = laneKey(o.current)
-  const free = o.candidates.filter(l => laneKey(l) === curKey || !o.taken.includes(laneKey(l)))
+  const done = o.exhausted ?? []
+  const free = o.candidates.filter(l => !done.includes(laneKey(l)) && !o.taken.includes(laneKey(l)))
+  if (done.includes(curKey)) {
+    const next = rankLanes(free.map(laneKey), o.stats)[0]
+    const lane = free.find(l => laneKey(l) === next)
+    return lane ? { lane, reason: `${curKey} has no results left; moving to ${next}` } : null
+  }
+  if (!free.some(l => laneKey(l) === curKey)) free.push(o.current)
   const scores = laneScores(free.map(laneKey), o.stats)
   const best = free.reduce((a, b) => (scores[laneKey(b)]! > scores[laneKey(a)]! ? b : a), o.current)
   const bestKey = laneKey(best)

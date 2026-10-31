@@ -1,0 +1,396 @@
+{
+ "note": "SYNTHETIC demo data. All domains are reserved .example names; all sellers and wallets are invented.",
+ "searchUsd": 0.002,
+ "lanes": [
+  {
+   "source": "marketplace",
+   "strategy": "accessories",
+   "pages": [
+    [
+     {
+      "url": "https://shopnow.example/item/key-fob-case",
+      "surface": "marketplace",
+      "title": "Key fob case for Model 3",
+      "snippet": "Silicone case, third party, fits Tesla key fob. Review 4.5 stars.",
+      "truth": false,
+      "seller": "casemaker"
+     },
+     {
+      "url": "https://shopnow.example/item/floor-mats",
+      "surface": "marketplace",
+      "title": "All-weather floor mats",
+      "snippet": "Third party mats compatible with Tesla Model Y. Review 4.2 stars.",
+      "truth": false,
+      "seller": "matworks"
+     }
+    ],
+    [
+     {
+      "url": "https://shopnow.example/item/charger-adapter",
+      "surface": "marketplace",
+      "title": "Charger adapter",
+      "snippet": "Compatible charger adapter, news coverage and review inside.",
+      "truth": false,
+      "seller": "chargeco"
+     }
+    ]
+   ]
+  },
+  {
+   "source": "marketplace",
+   "strategy": "discount-parts",
+   "pages": [
+    [
+     {
+      "url": "https://bargainparts.example/tesla-wall-connector?batch={run}",
+      "surface": "marketplace",
+      "title": "Tesla Wall Connector 90% off replica",
+      "snippet": "Replica wall connector with Tesla logo, counterfeit certification sticker.",
+      "truth": true,
+      "seller": "voltking88",
+      "price": 49,
+      "listPrice": 475,
+      "leads": [
+       {
+        "kind": "domain",
+        "value": "tesla-parts-outlet.example",
+        "note": "seller links here"
+       }
+      ],
+      "evidenceText": "Listing uses the Tesla logo and claims factory origin. Replica certification sticker visible. Ships from unverified warehouse."
+     },
+     {
+      "url": "https://bargainparts.example/tesla-badge-set",
+      "surface": "marketplace",
+      "title": "Tesla badge set replica",
+      "snippet": "Knockoff replica badges sold as genuine Tesla parts.",
+      "truth": true,
+      "seller": "voltking88",
+      "price": 12,
+      "listPrice": 60,
+      "evidenceText": "Knockoff badge set described as genuine. Seller has repeat listings."
+     }
+    ],
+    [
+     {
+      "url": "https://autodeals.example/tesla-model3-wheel-cover?batch={run}",
+      "surface": "marketplace",
+      "title": "Model 3 wheel covers 90% off",
+      "snippet": "Counterfeit Tesla wheel covers, limited claim price.",
+      "truth": true,
+      "seller": "wheelz4less",
+      "price": 20,
+      "listPrice": 200,
+      "evidenceText": "Counterfeit wheel covers with copied Tesla branding."
+     }
+    ]
+   ]
+  },
+  {
+   "source": "social",
+   "strategy": "promo-accounts",
+   "pages": [
+    [
+     {
+      "url": "https://chirp.example/teslafan/status/1",
+      "surface": "social",
+      "title": "Tesla owners fan club meetup",
+      "snippet": "Fan club forum discussion of a local meetup.",
+      "truth": false
+     },
+     {
+      "url": "https://chirp.example/evnews/status/2",
+      "surface": "social",
+      "title": "EV news roundup",
+      "snippet": "News and review of the latest EV deliveries.",
+      "truth": false
+     }
+    ]
+   ]
+  },
+  {
+   "source": "social",
+   "strategy": "giveaway-posts",
+   "pages": [
+    [
+     {
+      "url": "https://chirp.example/musk_official_gift/status/{run}01",
+      "surface": "social",
+      "title": "Tesla $100M crypto giveaway!",
+      "snippet": "Send ETH to double your crypto. Official promo with free Tesla draw. Wallet in bio.",
+      "truth": true,
+      "seller": "musk_official_gift",
+      "leads": [
+       {
+        "kind": "wallet",
+        "value": "0xFEED00000000000000000000000000000000BEEF",
+        "note": "wallet in bio"
+       },
+       {
+        "kind": "seller",
+        "value": "voltking88",
+        "note": "same promo link"
+       }
+      ],
+      "evidenceText": "Post uses an AI generated portrait and promises to double any crypto sent to a wallet. Giveaway language throughout."
+     },
+     {
+      "url": "https://chirp.example/tesla_airdrop/status/{run}02",
+      "surface": "social",
+      "title": "Tesla airdrop ends tonight",
+      "snippet": "Airdrop giveaway for holders. Connect wallet to claim.",
+      "truth": true,
+      "seller": "tesla_airdrop",
+      "leads": [
+       {
+        "kind": "channel",
+        "value": "tesla-airdrop-vip",
+        "note": "joins this channel"
+       }
+      ],
+      "evidenceText": "Airdrop giveaway promising free tokens, asks for wallet connection."
+     }
+    ],
+    [
+     {
+      "url": "https://grambook.example/p/tesla-free-car-{run}",
+      "surface": "social",
+      "title": "Free Tesla for the first 1000",
+      "snippet": "Free Tesla giveaway, limited claim, send small fee to wallet.",
+      "truth": true,
+      "seller": "teslagifts",
+      "evidenceText": "Free Tesla giveaway asks for an upfront fee sent to a wallet."
+     }
+    ]
+   ]
+  },
+  {
+   "source": "channels",
+   "strategy": "discord-invites",
+   "pages": [
+    [
+     {
+      "url": "https://chatservers.example/server/ev-owners",
+      "surface": "channels",
+      "title": "EV owners community",
+      "snippet": "Public forum discussion for owners, repair guide pinned.",
+      "truth": false
+     }
+    ]
+   ]
+  },
+  {
+   "source": "channels",
+   "strategy": "telegram-groups",
+   "pages": [
+    [
+     {
+      "url": "https://msgr.example/s/tesla-airdrop-vip",
+      "surface": "channels",
+      "title": "Tesla Airdrop VIP",
+      "snippet": "Official promo group. Double your crypto with our giveaway. Wallet pinned.",
+      "truth": true,
+      "seller": "tesla-airdrop-vip",
+      "leads": [
+       {
+        "kind": "domain",
+        "value": "tesla-x2-promo.example",
+        "note": "pinned link"
+       },
+       {
+        "kind": "wallet",
+        "value": "0xFEED00000000000000000000000000000000BEEF",
+        "note": "pinned wallet"
+       }
+      ],
+      "evidenceText": "Group pins a wallet and repeats double-your-crypto giveaway language."
+     }
+    ],
+    [
+     {
+      "url": "https://msgr.example/s/musk-signals-{run}",
+      "surface": "channels",
+      "title": "Musk crypto signals",
+      "snippet": "Fake signals, send crypto to wallet for giveaway entry.",
+      "truth": true,
+      "seller": "musk-signals",
+      "evidenceText": "Fake signals group using deepfake clips and giveaway language."
+     }
+    ]
+   ]
+  },
+  {
+   "source": "domains",
+   "strategy": "parked-names",
+   "pages": [
+    [
+     {
+      "url": "https://teslaforum.example",
+      "surface": "domains",
+      "title": "Tesla owners forum",
+      "snippet": "Forum discussion and repair guide by owners.",
+      "truth": false
+     },
+     {
+      "url": "https://evreviews.example/tesla",
+      "surface": "domains",
+      "title": "Tesla reviews",
+      "snippet": "Independent review site with news.",
+      "truth": false
+     }
+    ]
+   ]
+  },
+  {
+   "source": "domains",
+   "strategy": "lookalike-sites",
+   "pages": [
+    [
+     {
+      "url": "https://tesla-x2-promo.example",
+      "surface": "domains",
+      "title": "Tesla official promo",
+      "snippet": "Official promo: double your crypto in the Tesla giveaway. Send to wallet now.",
+      "truth": true,
+      "leads": [
+       {
+        "kind": "wallet",
+        "value": "0xFEED00000000000000000000000000000000BEEF",
+        "note": "on landing page"
+       }
+      ],
+      "evidenceText": "Lookalike landing page copies Tesla styling, shows a countdown and a wallet address for a giveaway."
+     },
+     {
+      "url": "https://tesla-parts-outlet.example",
+      "surface": "domains",
+      "title": "Tesla parts outlet",
+      "snippet": "Replica counterfeit parts at 90% off.",
+      "truth": true,
+      "evidenceText": "Storefront uses Tesla logo and sells replica parts."
+     }
+    ],
+    [
+     {
+      "url": "https://getteslacrypto-{run}.example",
+      "surface": "domains",
+      "title": "Get Tesla Crypto",
+      "snippet": "Airdrop giveaway site. Connect wallet.",
+      "truth": true,
+      "evidenceText": "Airdrop site asks visitors to connect a wallet for a giveaway."
+     }
+    ]
+   ]
+  },
+  {
+   "source": "video",
+   "strategy": "owner-reviews",
+   "pages": [
+    [
+     {
+      "url": "https://streamtube.example/watch?v=ownerreview",
+      "surface": "video",
+      "title": "Model Y one year owner review",
+      "snippet": "Honest owner review and news.",
+      "truth": false
+     }
+    ]
+   ]
+  },
+  {
+   "source": "video",
+   "strategy": "deepfake-streams",
+   "pages": [
+    [
+     {
+      "url": "https://streamtube.example/watch?v=muskgiveaway{run}",
+      "surface": "video",
+      "title": "LIVE: Musk announces $100M Tesla giveaway",
+      "snippet": "Deepfake livestream. Double your crypto, official promo, send to wallet in the description.",
+      "truth": true,
+      "seller": "tesla-live-event",
+      "leads": [
+       {
+        "kind": "domain",
+        "value": "tesla-x2-promo.example",
+        "note": "link in description"
+       },
+       {
+        "kind": "channel",
+        "value": "tesla-airdrop-vip",
+        "note": "pinned comment"
+       }
+      ],
+      "evidenceText": "Keyframes show a deepfake of the CEO over looping footage. Description links to a giveaway site with a wallet."
+     }
+    ],
+    [
+     {
+      "url": "https://streamtube.example/watch?v=teslacryptolive{run}",
+      "surface": "video",
+      "title": "Tesla crypto event live",
+      "snippet": "AI deepfake giveaway stream.",
+      "truth": true,
+      "seller": "tesla-live-event",
+      "evidenceText": "Deepfake stream, giveaway language, same channel as an earlier case."
+     }
+    ]
+   ]
+  }
+ ],
+ "leadResults": {
+  "seller:voltking88": [
+   {
+    "url": "https://bargainparts.example/tesla-powerwall-replica?batch={run}",
+    "surface": "marketplace",
+    "title": "Powerwall replica",
+    "snippet": "Counterfeit Tesla Powerwall casing from same seller.",
+    "truth": true,
+    "seller": "voltking88",
+    "price": 300,
+    "listPrice": 9000,
+    "evidenceText": "Same seller, counterfeit casing, copied branding."
+   }
+  ],
+  "domain:tesla-parts-outlet.example": [
+   {
+    "url": "https://tesla-parts-outlet.example/deals",
+    "surface": "domains",
+    "title": "Outlet deals",
+    "snippet": "Replica parts deal page with fake certificates.",
+    "truth": true,
+    "evidenceText": "Deal page for replica parts, fake certificates."
+   }
+  ],
+  "domain:tesla-x2-promo.example": [
+   {
+    "url": "https://tesla-x2-promo.example/claim",
+    "surface": "domains",
+    "title": "Claim your giveaway",
+    "snippet": "Send crypto to claim the Tesla giveaway.",
+    "truth": true,
+    "evidenceText": "Claim page with wallet and giveaway language."
+   }
+  ],
+  "channel:tesla-airdrop-vip": [
+   {
+    "url": "https://msgr.example/s/tesla-airdrop-vip/88",
+    "surface": "channels",
+    "title": "Pinned airdrop post",
+    "snippet": "Airdrop giveaway pinned post with wallet.",
+    "truth": true,
+    "evidenceText": "Pinned giveaway post with wallet."
+   }
+  ],
+  "wallet:0xFEED00000000000000000000000000000000BEEF": [
+   {
+    "url": "https://msgr.example/s/double-your-eth",
+    "surface": "channels",
+    "title": "Double your ETH",
+    "snippet": "Same wallet, double your crypto giveaway group.",
+    "truth": true,
+    "evidenceText": "Another group using the same wallet for a giveaway."
+   }
+  ]
+ }
+}
