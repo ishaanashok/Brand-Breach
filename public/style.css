@@ -83,9 +83,9 @@ body:has(.note:not([hidden])) .stage { height: calc(100dvh - var(--head) - 38px)
 @keyframes settle { from { scale: .2; opacity: 0; } }
 @keyframes ping { from { scale: .75; opacity: 1; } to { scale: 1.4; opacity: 0; } }
 @media (prefers-reduced-motion: reduce) { .web-point, .web-point::after { animation: none !important; } }
-.hud { position: absolute; left: 20px; top: 18px; max-width: 320px; pointer-events: none; text-shadow: 0 0 8px #000, 0 0 3px #000; }
+.hud { position: absolute; left: 20px; top: 18px; max-width: 340px; pointer-events: none; text-shadow: 0 0 8px #000, 0 0 3px #000; }
 .hud h2 { margin: 0; font-size: 26px; font-weight: 500; letter-spacing: -.02em; overflow-wrap: anywhere; }
-.hud p { margin: 2px 0 0; font-size: 13px; }
+.hud p { margin: 2px 0 0; font-size: 13px; white-space: nowrap; }
 .hud-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-top: 10px; pointer-events: auto; text-shadow: none; }
 .hud-actions button { padding: 3px 11px; font-size: 13px; background: #000; }
 .limit { display: flex; align-items: center; gap: 6px; }
@@ -126,7 +126,7 @@ tr.click:hover, tr.sel { background: var(--raised); }
 .fold summary { cursor: pointer; font-weight: 600; font-size: 14px; }
 .reasoned { border-left: 2px solid var(--line-strong); padding: 2px 12px; margin: 10px 0; }
 .reasoned.disagree { border-left-color: var(--ink); }
-.toast { position: fixed; left: 50%; bottom: 20px; transform: translateX(-50%); max-width: calc(100vw - 32px); padding: 9px 16px; border-radius: 99px; background: var(--ink); color: #000; font-size: 14px; box-shadow: 0 4px 24px rgba(255,255,255,.12); z-index: 10; }
+.toast { position: fixed; left: 50%; bottom: 66px; transform: translateX(-50%); max-width: calc(100vw - 32px); padding: 9px 16px; border-radius: 99px; background: var(--ink); color: #000; font-size: 14px; box-shadow: 0 4px 24px rgba(255,255,255,.12); z-index: 10; }
 .toast.bad { font-weight: 600; outline: 2px solid #000; }
 
 @media (max-width: 900px) { .review { grid-template-columns: minmax(0, 1fr); } .review-detail { position: static; max-height: none; } .review-list { max-height: 38vh; } }

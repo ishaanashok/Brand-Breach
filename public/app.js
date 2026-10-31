@@ -137,7 +137,7 @@ function renderHud(h) {
   const n = needsReview().length
   $('webBrand').textContent = h.input.brand
   const spiders = view.cases.filter(c => ['verified', 'awaiting_approval', 'approved'].includes(c.state)).length
-  const state = { running: 'Weaving', paused: 'Paused. Agents wait until you resume', done: 'Finished', budget_exhausted: 'Stopped at the spending limit. Raise it to carry on' }[h.status] ?? h.status
+  const state = { running: 'Weaving', paused: 'Paused', done: 'Finished', budget_exhausted: 'Stopped at the limit' }[h.status] ?? h.status
   $('webLine').textContent = `${state}. ${view.cases.length} ${view.cases.length === 1 ? 'site' : 'sites'}, ${spiders} ${spiders === 1 ? 'spider' : 'spiders'}.`
   $('webSpend').textContent = `${usd(h.spent)} of ${usd(h.input.budgetUsd)} used. ${config.billed.length ? 'Real money.' : 'Simulated.'}`
   const finished = h.status === 'done'
