@@ -7,9 +7,19 @@ const KbGraph = (() => {
   const KIND_LABEL = { root: 'Brand', hub: 'Topic', fact: 'Fact', official: 'Official', risk: 'Abuse signal', tag: 'Hashtag', image: 'Visual reference' }
   const leafColor = '#b5b5b5'
   const REVEAL_MS = 1600
-  let canvas, ctx, info, graph, near
+  let canvas, ctx, info, graph, near, byId
   let w = 0, h = 0, scale = 0.6, ox = 0, oy = 0
   let hover = null, chosen = null, visible = false, started = 0, placed = false
+  // Where the mouse is and how it is moving, in screen pixels.
+  let mouse = null, lastFrame = 0
+  const REACH = 180
+  const CLEAR = 14 // Nodes this close stay put, or the one being pointed at would slide away from the click.
+  const PUSH = 1.1
+  const WAKE = 0.05
+  const SPRING = 0.022
+  const TUG = 0.012
+  const DAMPING = 0.88
+  const STILL = matchMedia('(prefers-reduced-motion: reduce)').matches
 
   const color = n => COLOR[n.kind] ?? leafColor
   const radius = n => n.kind === 'root' ? 30 : n.kind.endsWith('hub') ? 15 + Math.min(near.get(n.id).size, 20) * 0.45 : 3.5 + Math.min(near.get(n.id).size, 6) * 0.9
@@ -33,16 +43,49 @@ const KbGraph = (() => {
   }
   const drift = (n, t) => n.kind === 'root' ? [n.x, n.y] : [n.x + Math.sin(t / 1900 + n.x) * 3, n.y + Math.cos(t / 2300 + n.y) * 3]
 
+  /** Moves nodes away from the mouse and along with its motion. Links pull neighbours along, and springs bring all of them home. */
+  function flow(steps) {
+    const home = n => [ox + (n.x + n.dx) * scale, oy + (n.y + n.dy) * scale]
+    for (const n of graph.nodes) {
+      n.ax = -n.dx * SPRING
+      n.ay = -n.dy * SPRING
+      if (!mouse) continue
+      const [x, y] = home(n)
+      const ddx = x - mouse.x, ddy = y - mouse.y
+      const d = Math.hypot(ddx, ddy) || 1
+      if (d > REACH) continue
+      const near = 1 - d / REACH
+      const push = d > CLEAR ? PUSH * near * near : 0
+      n.ax += (ddx / d * push + mouse.vx * WAKE * near) / scale
+      n.ay += (ddy / d * push + mouse.vy * WAKE * near) / scale
+    }
+    for (const [a, b] of graph.edges) {
+      const p = byId.get(a), q = byId.get(b)
+      const fx = (q.dx - p.dx) * TUG, fy = (q.dy - p.dy) * TUG
+      p.ax += fx; p.ay += fy; q.ax -= fx; q.ay -= fy
+    }
+    const damp = DAMPING ** steps
+    for (const n of graph.nodes) {
+      n.vx = (n.vx + n.ax * steps) * damp
+      n.vy = (n.vy + n.ay * steps) * damp
+      n.dx += n.vx * steps
+      n.dy += n.vy * steps
+    }
+    if (mouse) { mouse.vx *= 0.8 ** steps; mouse.vy *= 0.8 ** steps }
+  }
+
   function draw(t) {
     if (!visible) return
     requestAnimationFrame(draw)
+    flow(Math.min(2, (t - lastFrame) / 16.67 || 1))
+    lastFrame = t
     const grown = Math.min(1, (t - started) / REVEAL_MS)
     ctx.clearRect(0, 0, w, h)
     const focus = hover ?? chosen
     const lit = focus ? near.get(focus.id) : null
     const at = new Map(graph.nodes.map(n => {
       const [x, y] = drift(n, t)
-      return [n.id, { x: ox + x * grown * scale, y: oy + y * grown * scale }]
+      return [n.id, { x: ox + (x * grown + n.dx) * scale, y: oy + (y * grown + n.dy) * scale }]
     }))
     ctx.lineWidth = 1
     for (const [a, b] of graph.edges) {
@@ -81,7 +124,7 @@ const KbGraph = (() => {
   function nodeAt(px, py) {
     let best = null, bestD = 16
     for (const n of graph.nodes) {
-      const d = Math.hypot(ox + n.x * scale - px, oy + n.y * scale - py) - radius(n) * Math.max(0.55, Math.min(1.5, scale * 1.7))
+      const d = Math.hypot(ox + (n.x + n.dx) * scale - px, oy + (n.y + n.dy) * scale - py) - radius(n) * Math.max(0.55, Math.min(1.5, scale * 1.7))
       if (d < bestD) { best = n; bestD = d }
     }
     return best
@@ -107,10 +150,13 @@ const KbGraph = (() => {
     graph = RolexKb.buildGraph()
     near = new Map(graph.nodes.map(n => [n.id, new Set()]))
     for (const [a, b] of graph.edges) { near.get(a).add(b); near.get(b).add(a) }
+    byId = new Map(graph.nodes.map(n => [n.id, n]))
+    for (const n of graph.nodes) Object.assign(n, { dx: 0, dy: 0, vx: 0, vy: 0, ax: 0, ay: 0 })
     showInfo(null)
     let drag = null
     canvas.onpointerdown = e => {
       drag = { x: e.offsetX, y: e.offsetY, ox, oy, moved: false }
+      mouse = null
       canvas.setPointerCapture(e.pointerId)
       canvas.classList.add('dragging')
     }
@@ -121,6 +167,9 @@ const KbGraph = (() => {
         oy = drag.oy + e.offsetY - drag.y
         return
       }
+      if (!STILL && e.pointerType === 'mouse') {
+        mouse = { x: e.offsetX, y: e.offsetY, vx: mouse ? e.offsetX - mouse.x : 0, vy: mouse ? e.offsetY - mouse.y : 0 }
+      }
       hover = nodeAt(e.offsetX, e.offsetY)
       canvas.style.cursor = hover ? 'pointer' : ''
     }
@@ -129,7 +178,7 @@ const KbGraph = (() => {
       if (drag && !drag.moved) { chosen = nodeAt(e.offsetX, e.offsetY); showInfo(chosen) }
       drag = null
     }
-    canvas.onpointerleave = () => { hover = null }
+    canvas.onpointerleave = () => { hover = null; mouse = null }
     canvas.addEventListener('wheel', e => {
       e.preventDefault()
       zoomAt(e.offsetX, e.offsetY, Math.exp(-e.deltaY * 0.0015))
