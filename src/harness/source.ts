@@ -1,9 +1,12 @@
+import type { QueryOutcome, SearchHistory } from '../core/machines/brand'
 import type { Hit, Lane, Lead } from '../core/types'
 
 export type SearchResult = {
   hits: Hit[]; usd: number
   /** Links found on pages that were already sent on by OnHits. */
   leads?: { lead: Lead; from: string }[]
+  /** Each query this search ran and how it went, for later hunts. */
+  queries?: QueryOutcome[]
 }
 export type Capture = { text?: string; problem?: string }
 /** Takes hits as soon as they're found, and says how many new ones look worth a closer look. */
@@ -19,7 +22,7 @@ export interface Source {
   /** Every lane a scout on this surface may be steered to. */
   lanes(surface: Lane['source'], keywords: string[]): Lane[]
   /** Hands back what was already covered, after a restart or by an earlier hunt for this brand. */
-  restore?(known: { searches: number; urls: string[] }): void
+  restore?(known: { searches: number; urls: string[]; history?: SearchHistory }): void
   /** Why this source has nothing left to do, or null while it still has. */
   over?(): string | null
   /** Page text for a shortlisted hit, which until then is only a search result. Without text, it says why. */

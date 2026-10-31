@@ -1,5 +1,5 @@
 import { expect, test } from 'bun:test'
-import { brand, initialBrand } from '../src/core/machines/brand'
+import { brand, initialBrand, searchHistory, type QueryOutcome } from '../src/core/machines/brand'
 import { webMemory } from '../src/harness/spiders'
 
 test('a page remembers every hunt that came across it and keeps its first sighting', () => {
@@ -60,4 +60,38 @@ test('a page seen earlier in this hunt is not a repeat', () => {
   m.fresh([item], u => known.push(u))
   m.fresh([item], u => known.push(u))
   expect(known).toEqual([])
+})
+
+const NOW = 100 * 24 * 60 * 60 * 1000
+const ran = (queries: QueryOutcome[], at = NOW) => ({ huntId: 'h', scout: 'a', lane: 'l', at, found: 0, fresh: 0, usd: 0, queries })
+
+test('history sorts earlier searches by how they went, and the latest outcome counts', () => {
+  const s = { ...initialBrand(), searches: [
+    ran([{ query: 'fake acme', found: 5, fresh: 5 }, { query: 'acme outlet', found: 5, fresh: 1 }, { query: 'acme deals', found: 4, fresh: 3 }]),
+    ran([{ query: 'Acme Outlet', found: 5, fresh: 0 }]),
+  ] }
+  const h = searchHistory(s, NOW)
+  expect(h.worked).toEqual(['fake acme', 'acme deals'])
+  expect(h.dry).toEqual(['Acme Outlet'])
+})
+
+test('a search with no results is not dry, because an outage looks the same', () => {
+  expect(searchHistory({ ...initialBrand(), searches: [ran([{ query: 'q', found: 0, fresh: 0 }])] }, NOW)).toEqual({ dry: [], worked: [], sites: [] })
+})
+
+test('an old dry search gets another try, and a brand with no queries still reads', () => {
+  const s = { ...initialBrand(), searches: [ran([{ query: 'q', found: 2, fresh: 0 }], 0), { huntId: 'h', scout: 'a', lane: 'l', at: NOW, found: 1, fresh: 1, usd: 0 }] }
+  expect(searchHistory(s, NOW).dry).toEqual([])
+})
+
+test('sites rank by flagged pages, and pages that were cleared do not count', () => {
+  const page = (state: string) => ({ score: 0.9, state, firstAt: 0, lastAt: 0, hunts: [] })
+  const s = { ...initialBrand(), seen: {
+    'https://a.example/1': page('verified'),
+    'https://www.b.example/1': page('awaiting_approval'),
+    'https://www.b.example/2': page('approved'),
+    'https://c.example/1': page('cleared'),
+    'not a url': page('verified'),
+  } }
+  expect(searchHistory(s, NOW).sites).toEqual(['b.example', 'a.example'])
 })

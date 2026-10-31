@@ -1,4 +1,5 @@
 import { canonicalUrl } from '../core/canonical'
+import type { QueryOutcome, SearchHistory } from '../core/machines/brand'
 import type { Hit, Lane, Lead, Surface } from '../core/types'
 import type { OnHits, SearchResult, Source } from './source'
 import { readPage, readProblem, searchDegraded, webSearch, type Page, type SearchItem } from './web'
@@ -143,13 +144,16 @@ export function webMemory(limit = Infinity) {
   const known = new Set<string>()
   const hostReads = new Map<string, number>()
   let searches = 0
+  let history: SearchHistory = { dry: [], worked: [], sites: [] }
+  let dryWords: Set<string>[] = []
   return {
     get searches() { return searches },
     get limit() { return limit },
     spent: () => searches >= limit,
     /** Pages found before a restart, or by an earlier hunt for this brand, are not new. */
-    restore(count: number, urls: string[]) {
+    restore(count: number, urls: string[], earlier?: SearchHistory) {
       searches = Math.max(searches, count)
+      if (earlier) { history = earlier; dryWords = earlier.dry.map(queryWords) }
       for (const u of urls) { shown.add(urlKey(u)); reported.add(urlKey(u)); known.add(urlKey(u)) }
     },
     /** Why this search shouldn't run, or null after counting it. */
@@ -157,6 +161,7 @@ export function webMemory(limit = Infinity) {
       if (searches >= limit) return 'The search limit for this hunt is reached. Call report now.'
       const words = queryWords(query)
       if (queries.some(q => overlap(q.words, words) >= SAME_QUERY)) return 'This hunt already ran that search. Look somewhere different, or call report.'
+      if (dryWords.some(d => overlap(d, words) >= SAME_QUERY)) return 'An earlier hunt ran that search and it found nothing new. Look somewhere different, or call report.'
       queries.push({ text: query, words })
       searches++
       return null
@@ -190,8 +195,11 @@ export function webMemory(limit = Infinity) {
     },
     /** Told to each agent at the start, so it plans around what the others did. */
     brief() {
-      if (!queries.length && !hostReads.size) return ''
-      return `\nThis hunt has already covered the following, so go somewhere new. Searches: ${JSON.stringify(queries.slice(-BRIEF_QUERIES).map(q => q.text))}. Sites read: ${JSON.stringify([...hostReads.keys()])}.`
+      const list = (items: string[]) => JSON.stringify(items.slice(0, BRIEF_QUERIES))
+      return (history.worked.length ? `\nThese searches found new pages in earlier hunts, and those pages are already known, so try new angles on them: ${list(history.worked)}.` : '')
+        + (history.dry.length ? `\nThese searches found nothing new last time, so don't repeat them: ${list(history.dry)}.` : '')
+        + (history.sites.length ? `\nEarlier hunts flagged pages on these sites, so look for related sellers and similar sites: ${list(history.sites)}.` : '')
+        + (queries.length || hostReads.size ? `\nThis hunt has already covered the following, so go somewhere new. Searches: ${JSON.stringify(queries.slice(-BRIEF_QUERIES).map(q => q.text))}. Sites read: ${JSON.stringify([...hostReads.keys()])}.` : '')
     },
   }
 }
@@ -212,7 +220,7 @@ export type SpiderOpts = {
  * Sends GLM out over the real web. GLM chooses searches and pages but gives no verdict: the classifier
  * alone decides what is infringing. A reported URL only counts if it really came back from the web.
  */
-export async function runSpider(o: SpiderOpts & { surface: Surface; mission: string; followUp?: string; memory?: WebMemory; onSearch?: () => void; onHits?: (hits: Hit[]) => void }): Promise<{ hits: Hit[]; leads: { lead: Lead; from: string }[]; usd: number; searches: number }> {
+export async function runSpider(o: SpiderOpts & { surface: Surface; mission: string; followUp?: string; memory?: WebMemory; onSearch?: () => void; onHits?: (hits: Hit[]) => void }): Promise<{ hits: Hit[]; leads: { lead: Lead; from: string }[]; usd: number; searches: number; queries: QueryOutcome[] }> {
   const search = o.search ?? webSearch
   const read = o.read ?? readPage
   const memory = o.memory ?? webMemory()
@@ -222,6 +230,7 @@ export async function runSpider(o: SpiderOpts & { surface: Surface; mission: str
   const say = o.onActivity ?? (() => {})
   let usd = 0
   let searches = 0
+  const queries: QueryOutcome[] = []
   const messages: ChatMessage[] = [
     {
       role: 'system',
@@ -257,7 +266,9 @@ export async function runSpider(o: SpiderOpts & { surface: Surface; mission: str
             searches++
             usd += o.searchUsd ?? 0
             o.onSearch?.()
-            const items = memory.fresh(await search(query), o.onKnownPage)
+            const results = await search(query)
+            const items = memory.fresh(results, o.onKnownPage)
+            queries.push({ query, found: results.length, fresh: items.length })
             for (const i of items) seen.set(urlKey(i.url), i)
             if (o.onHits && items.length) {
               for (const i of items) { sent.add(urlKey(i.url)); memory.claimReport(i.url) }
@@ -309,7 +320,7 @@ export async function runSpider(o: SpiderOpts & { surface: Surface; mission: str
   }))
   const hits = found.filter((h): h is Hit => h !== null)
   if (hits.length || !o.onHits) say(`reported ${hits.length} ${hits.length === 1 ? 'page' : 'pages'} to the classifier`)
-  return { hits, leads, usd, searches }
+  return { hits, leads, usd, searches, queries }
 }
 
 const hostLabel = (u: string) => { try { return new URL(u).hostname } catch { return u.slice(0, 60) } }
@@ -339,7 +350,7 @@ export function spiderSource(o: Omit<SpiderOpts, 'onActivity'> & { onActivity?: 
         onActivity: text => o.onActivity?.(lane.source, text),
       })
       reported = r.hits.length
-      return { hits: r.hits, usd: r.usd, leads: r.leads }
+      return { hits: r.hits, usd: r.usd, leads: r.leads, queries: r.queries }
     } finally {
       await Promise.all(classifying)
       dryRuns = reported || promising ? 0 : dryRuns + 1
@@ -351,7 +362,7 @@ export function spiderSource(o: Omit<SpiderOpts, 'onActivity'> & { onActivity?: 
     id: 'spiders',
     // A run's worst case, plus a little for its model turns and for classifying what it finds.
     estUsd: o.searchUsd ? o.searchUsd * MAX_SEARCHES_PER_RUN + 0.002 + CLASSIFY_USD_PER_RUN : 0,
-    restore: ({ searches, urls }) => memory.restore(searches, urls),
+    restore: ({ searches, urls, history }) => memory.restore(searches, urls, history),
     touch: () => { lastWork = now() },
     busy: () => active > 0 || now() - lastWork < SETTLE_MS,
     caveat: () => (searchDegraded() ? 'Results were limited because DuckDuckGo is not answering. A search API key avoids this.' : null),

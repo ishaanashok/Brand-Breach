@@ -345,3 +345,19 @@ test('a source stays busy while an agent is out and just after it returns', asyn
   t = 53_001
   expect(s.busy!()).toBe(false)
 })
+
+test('a new hunt is told what earlier hunts learned and skips what came back dry', async () => {
+  const memory = webMemory()
+  memory.restore(0, [], { dry: ['acme outlet deals'], worked: ['fake acme watches'], sites: ['bad.example'] })
+  const nim = scripted([
+    { role: 'assistant', content: null, tool_calls: [call('web_search', { query: 'Acme deals outlet' })] },
+    { role: 'assistant', content: null, tool_calls: [call('web_search', { query: 'acme replica' })] },
+    { role: 'assistant', content: null, tool_calls: [call('report', { candidates: [] })] },
+  ])
+  const r = await runSpider({ ...base, nim, memory, search: async () => [{ url: 'https://new.example/a', title: 'A', snippet: '' }, { url: 'https://new.example/b', title: 'B', snippet: '' }] })
+  const brief = nim.sent[0]![1]!.content
+  for (const said of ['fake acme watches', 'acme outlet deals', 'bad.example']) expect(brief).toContain(said)
+  expect(nim.sent[1]!.at(-1)!.content).toContain('earlier hunt')
+  expect(memory.searches).toBe(1)
+  expect(r.queries).toEqual([{ query: 'acme replica', found: 2, fresh: 2 }])
+})
