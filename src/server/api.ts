@@ -11,6 +11,9 @@ import type { Reasoner } from '../reasoners/types'
 import type { Bus } from '../relay/types'
 import type { Store } from '../store/types'
 
+const RESUME_TRIES = 12
+const RESUME_WAIT_MS = 5000
+
 export type AppConfig = {
   port: number; store: Store; mode: string; verifyEstUsd: number; timing: Timing
   triage: Decider; verify: Decider; reasoner?: Reasoner
@@ -221,21 +224,26 @@ export async function createServer(cfg: AppConfig): Promise<App> {
     /** Rebuilds a runner for every running hunt the Playbook remembers. */
     async resumeAll() {
       const resumed: string[] = []
-      for (const id of await store.playbook().listHunts()) {
-        const h = await store.hunt(id).snapshot()
-        if (h.status !== 'running' && h.status !== 'paused') continue
-        const prior = (await store.brand(slug(h.input!.brand)).snapshot()).hunts
-        // One hunt that cannot rejoin must not keep the others, or the server, down.
-        try {
-          const r = new HuntRunner(id, await deps(id, Math.max(prior, 1)))
-          await r.resume()
-          runners.set(id, r)
-          resumed.push(id)
-        } catch (err) {
-          await store.hunt(id).log(`could not resume: ${err}`, Date.now()).catch(() => console.error(`[customs] could not resume ${id}:`, err))
-          console.error(`[customs] could not resume ${id}: ${err}`)
+      // Hunts resume side by side, and retry while the actor runtime comes back.
+      await Promise.all((await store.playbook().listHunts()).map(async id => {
+        for (let tries = RESUME_TRIES; tries > 0; tries--) {
+          let r: HuntRunner | undefined
+          try {
+            const h = await store.hunt(id).snapshot()
+            if (h.status !== 'running' && h.status !== 'paused') return
+            const prior = (await store.brand(slug(h.input!.brand)).snapshot()).hunts
+            r = new HuntRunner(id, await deps(id, Math.max(prior, 1)))
+            await r.resume()
+            runners.set(id, r)
+            resumed.push(id)
+            return
+          } catch (err) {
+            await r?.stop().catch(() => {})
+            console.error(`[customs] could not resume ${id}: ${err}`)
+            await Bun.sleep(RESUME_WAIT_MS)
+          }
         }
-      }
+      }))
       return resumed
     },
   }
