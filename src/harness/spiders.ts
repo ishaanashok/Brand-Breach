@@ -7,6 +7,8 @@ export type NimConfig = {
   apiKey: string; baseUrl?: string; model?: string; timeoutMs?: number; retries?: number
   /** NIM's trial credits have no per-token price, so these default to zero. */
   usdPerMInput?: number; usdPerMOutput?: number
+  /** OpenAI's own endpoint takes newer settings than NIM does. */
+  openai?: boolean
   fetch?: typeof fetch
 }
 export type ChatMessage = { role: string; content: string | null; tool_calls?: ToolCall[]; tool_call_id?: string; reasoning_content?: string }
@@ -24,7 +26,10 @@ export function nimClient(c: NimConfig) {
   const base = c.baseUrl ?? 'https://integrate.api.nvidia.com/v1'
   const model = c.model ?? SPIDER_MODEL
   const retries = c.retries ?? RETRIES
-  const reasoning = model.includes('glm') ? { reasoning_effort: 'low' } : {}
+  const label = c.openai ? 'OpenAI' : 'NIM'
+  const settings = c.openai
+    ? { reasoning_effort: 'low', max_completion_tokens: 1500 }
+    : { ...(model.includes('glm') ? { reasoning_effort: 'low' } : {}), temperature: 0.5, top_p: 1, max_tokens: 1500 }
   return {
     model,
     async chat(messages: ChatMessage[], tools?: unknown[]): Promise<{ message: ChatMessage; usd: number }> {
@@ -35,19 +40,19 @@ export function nimClient(c: NimConfig) {
           const res = await f(`${base}/chat/completions`, {
             method: 'POST',
             headers: { 'content-type': 'application/json', authorization: `Bearer ${c.apiKey}` },
-            body: JSON.stringify({ model, messages, ...reasoning, temperature: 0.5, top_p: 1, max_tokens: 1500, stream: false, ...(tools ? { tools, tool_choice: 'auto' } : {}) }),
+            body: JSON.stringify({ model, messages, ...settings, stream: false, ...(tools ? { tools, tool_choice: 'auto' } : {}) }),
             signal: AbortSignal.timeout(c.timeoutMs ?? TIMEOUT_MS),
           })
-          if (res.status === 429 || res.status >= 500) { last = `NIM ${res.status}`; continue }
-          if (!res.ok) throw new Error(`NIM ${res.status}: ${(await res.text()).slice(0, 200)}`)
+          if (res.status === 429 || res.status >= 500) { last = `${label} ${res.status}`; continue }
+          if (!res.ok) throw new Error(`${label} ${res.status}: ${(await res.text()).slice(0, 200)}`)
           const body: any = await res.json()
           const message = body.choices?.[0]?.message
-          if (!message) throw new Error('NIM returned no message')
+          if (!message) throw new Error(`${label} returned no message`)
           const usd = ((body.usage?.prompt_tokens ?? 0) / 1e6) * (c.usdPerMInput ?? 0) + ((body.usage?.completion_tokens ?? 0) / 1e6) * (c.usdPerMOutput ?? 0)
           return { message, usd }
         } catch (err) {
           last = String(err)
-          if (String(err).includes('NIM 4')) throw err
+          if (String(err).includes(`${label} 4`)) throw err
         }
       }
       throw new Error(last)
@@ -187,7 +192,9 @@ export type WebMemory = ReturnType<typeof webMemory>
 
 type Activity = (text: string) => void
 export type SpiderOpts = {
-  nim: Nim; brand: string; officialDomains: string[]; onActivity?: Activity; search?: typeof webSearch; read?: typeof readPage
+  nim: Nim; brand: string; officialDomains: string[]; onActivity?: Activity; search?: (query: string) => Promise<SearchItem[]>; read?: typeof readPage
+  /** What one search costs, when searches aren't free. */
+  searchUsd?: number
   /** Waits while the hunt is paused. */
   gate?: () => Promise<void>
 }
@@ -239,6 +246,7 @@ export async function runSpider(o: SpiderOpts & { surface: Surface; mission: str
           else {
             say(`searching “${query.slice(0, 80)}”`)
             searches++
+            usd += o.searchUsd ?? 0
             o.onSearch?.()
             const items = memory.fresh(await search(query))
             for (const i of items) seen.set(urlKey(i.url), i)
@@ -330,7 +338,8 @@ export function spiderSource(o: Omit<SpiderOpts, 'onActivity'> & { onActivity?: 
   }
   return {
     id: 'spiders',
-    estUsd: 0,
+    // A run's worst case, plus a little for its model turns.
+    estUsd: o.searchUsd ? o.searchUsd * MAX_SEARCHES_PER_RUN + 0.002 : 0,
     restore: ({ searches, urls }) => memory.restore(searches, urls),
     touch: () => { lastWork = now() },
     caveat: () => (searchDegraded() ? 'Results were limited because DuckDuckGo is not answering. A search API key avoids this.' : null),

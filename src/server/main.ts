@@ -3,6 +3,7 @@ import { deciderFromConfig } from '../deciders/config'
 import { sharedSlots } from '../deciders/util'
 import { DEMO_TIMING, SPIDER_TIMING } from '../harness/hunt-runner'
 import { liveSource } from '../harness/live'
+import { LUNA_MODEL, LUNA_SEARCH_USD, LUNA_USD_PER_M_INPUT, LUNA_USD_PER_M_OUTPUT, lunaSearch } from '../harness/luna'
 import { nimClient, spiderSource } from '../harness/spiders'
 import { autoFallback, type Source } from '../harness/source'
 import { loadTape, tapeSource } from '../harness/tape'
@@ -27,6 +28,7 @@ const tape = await loadTape()
 
 const log = (s: string) => console.log(`[customs] ${s}`)
 const LOCAL_DECIDER_SLOTS = 3
+const OPENAI_DECIDER_SLOTS = 16
 const deciderLog: DeciderLog = { fallbacks: [], shadow: [] }
 const { triage: rawTriage, verify: rawVerify, mode } = deciderFromConfig(env, {
   onFallback: (from, error) => { deciderLog.fallbacks.push({ at: Date.now(), from, error }); log(`decider ${from} fell through: ${error}`) },
@@ -40,15 +42,16 @@ const kbFixtures = await Bun.file(new URL('../../tapes/kb.json', import.meta.url
 const reasoner = reasonerFromConfig(env, kbFixtures)
 
 const billed = [
-  ['target', 'hybrid', 'shadow'].includes(mode) && 'decisions',
+  ['openai', 'target', 'hybrid', 'shadow'].includes(mode) && 'decisions',
   reasoner.id !== 'mock-reasoner' && !reasoner.kbOnly && 'reasoning',
-  env.CUSTOMS_SOURCE === 'live' && 'search',
+  (env.CUSTOMS_SOURCE === 'live' || (env.CUSTOMS_SOURCE ?? (env.OPENAI_API_KEY ? 'luna' : '')) === 'luna') && 'search',
 ].filter((b): b is string => Boolean(b))
 
-const slots = sharedSlots(LOCAL_DECIDER_SLOTS)
+const slots = sharedSlots(mode === 'openai' ? OPENAI_DECIDER_SLOTS : LOCAL_DECIDER_SLOTS)
 const triage = slots(rawTriage)
 const verify = slots(rawVerify)
-const sourceKind = env.CUSTOMS_SOURCE ?? (env.NIM_API_KEY ? 'spiders' : 'tape')
+// One key switches everything over: Luna searches and the Decisions API classifies.
+const sourceKind = env.CUSTOMS_SOURCE ?? (env.OPENAI_API_KEY ? 'luna' : env.NIM_API_KEY ? 'spiders' : 'tape')
 const SURFACE_LABEL: Record<string, string> = { social: 'Social media', marketplace: 'Marketplaces', video: 'Video sites', domains: 'Websites', channels: 'Group chats' }
 const spiders = new Map<string, Source>()
 const app = await createServer({
@@ -57,7 +60,7 @@ const app = await createServer({
   source: sourceKind,
   store, mode, triage, verify, reasoner, deciderLog,
   verifyEstUsd: sourceKind === 'spiders' ? 0 : 0.002,
-  timing: sourceKind === 'spiders' ? SPIDER_TIMING : DEMO_TIMING,
+  timing: sourceKind === 'spiders' || sourceKind === 'luna' ? SPIDER_TIMING : DEMO_TIMING,
   makeBus: async huntId => {
     if (env.CUSTOMS_BUS === 'memory') return new MemoryBus()
     const f = stateFile(huntId)
@@ -68,13 +71,23 @@ const app = await createServer({
     })
   },
   makeSource: (run, huntId, input) => {
-    if (sourceKind === 'spiders') {
-      if (!env.NIM_API_KEY) throw new Error('CUSTOMS_SOURCE=spiders needs NIM_API_KEY')
+    if (sourceKind === 'spiders' || sourceKind === 'luna') {
+      if (sourceKind === 'spiders' && !env.NIM_API_KEY) throw new Error('CUSTOMS_SOURCE=spiders needs NIM_API_KEY')
+      if (sourceKind === 'luna' && !env.OPENAI_API_KEY) throw new Error('CUSTOMS_SOURCE=luna needs OPENAI_API_KEY')
       // One per hunt, however often it's asked for, because it counts what the hunt has used up.
       let spider = spiders.get(huntId)
       if (!spider) {
         spider = spiderSource({
-          nim: nimClient({ apiKey: env.NIM_API_KEY, baseUrl: env.NIM_BASE_URL, model: env.NIM_MODEL }),
+          ...(sourceKind === 'luna' ? {
+            nim: nimClient({
+              apiKey: env.OPENAI_API_KEY!, baseUrl: `${env.OPENAI_BASE_URL ?? 'https://api.openai.com'}/v1`, model: env.LUNA_MODEL ?? LUNA_MODEL, openai: true, timeoutMs: 60_000,
+              usdPerMInput: Number(env.LUNA_USD_PER_M_INPUT ?? LUNA_USD_PER_M_INPUT), usdPerMOutput: Number(env.LUNA_USD_PER_M_OUTPUT ?? LUNA_USD_PER_M_OUTPUT),
+            }),
+            search: lunaSearch({ apiKey: env.OPENAI_API_KEY!, baseUrl: env.OPENAI_BASE_URL, model: env.LUNA_MODEL }),
+            searchUsd: Number(env.LUNA_SEARCH_USD ?? LUNA_SEARCH_USD),
+          } : {
+            nim: nimClient({ apiKey: env.NIM_API_KEY!, baseUrl: env.NIM_BASE_URL, model: env.NIM_MODEL }),
+          }),
           brand: input.brand, officialDomains: input.officialDomains, maxSearches: input.maxSearches,
           onSearch: () => { store.hunt(huntId).bump('searches').catch(() => {}) },
           gate: async () => { while ((await store.hunt(huntId).snapshot()).status === 'paused') await Bun.sleep(1000) },

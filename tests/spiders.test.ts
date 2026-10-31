@@ -3,6 +3,9 @@ import { SPIDER_MODEL, nimClient, runSpider, spiderSource, webMemory, type ChatM
 import { sharedSlots } from '../src/deciders/util'
 import { verifyTick } from '../src/harness/verifier'
 import { MemoryStore } from '../src/store/memory'
+import { deciderFromConfig } from '../src/deciders/config'
+import { lunaSearch, parseLunaSearch } from '../src/harness/luna'
+import { reasonerFromConfig } from '../src/reasoners/config'
 import { glmKbReasoner } from '../src/reasoners/glm'
 import { htmlToPage, isPrivateAddress, onTopic, parseBing, parseBrave, parseDuckDuckGo, readPage, searchDegraded, searchOnce } from '../src/harness/web'
 
@@ -240,4 +243,43 @@ test('a search API key is used in place of scraping', async () => {
   }) as any
   expect(await searchOnce('acme', { f, braveKey: 'k' })).toEqual([{ url: 'https://fake.shop/a', title: 'A', snippet: 'd' }])
   expect(parseBrave({})).toEqual([])
+})
+
+test('OpenAI search returns cited pages and sources, each once', () => {
+  const items = parseLunaSearch({ output: [
+    { type: 'web_search_call', action: { sources: [{ url: 'https://b.shop/' }, { url: 'https://a.shop/' }, { url: 'ftp://x' }] } },
+    { type: 'message', content: [{ text: 'Cheap replicas here', annotations: [{ type: 'url_citation', url: 'https://a.shop/', title: 'A', start_index: 19 }] }] },
+  ] })
+  expect(items).toEqual([{ url: 'https://a.shop/', title: 'A', snippet: 'Cheap replicas here' }, { url: 'https://b.shop/', title: 'https://b.shop/', snippet: '' }])
+})
+
+test('OpenAI search forces a real search, and a bad key stops at once', async () => {
+  let body: any, n = 0
+  const ok = lunaSearch({ apiKey: 'k', fetch: (async (_: string, init: any) => { body = JSON.parse(init.body); return Response.json({ output: [] }) }) as any })
+  await ok('acme')
+  expect(body.model).toBe('gpt-6-luna')
+  expect(body.tool_choice).toBe('required')
+  const bad = lunaSearch({ apiKey: 'k', fetch: (async () => { n++; return new Response('no', { status: 401 }) }) as any })
+  await expect(bad('acme')).rejects.toThrow('401')
+  expect(n).toBe(1)
+})
+
+test('on OpenAI, agents use its settings and searches are charged', async () => {
+  const bodies: any[] = []
+  const client = nimClient({ apiKey: 'k', model: 'gpt-6-luna', openai: true, usdPerMInput: 1, fetch: (async (_: string, init: any) => { bodies.push(JSON.parse(init.body)); return Response.json({ choices: [{ message: { role: 'assistant', content: null, tool_calls: bodies.length === 1 ? [call('web_search', { query: 'acme' })] : [call('report', { candidates: [] })] } }], usage: { prompt_tokens: 1000000, completion_tokens: 0 } }) }) as any })
+  const r = await runSpider({ ...base, nim: client, search, searchUsd: 0.01 })
+  expect(bodies[0].max_completion_tokens).toBe(1500)
+  expect(bodies[0].reasoning_effort).toBe('low')
+  expect(bodies[0].max_tokens).toBeUndefined()
+  expect(bodies[0].temperature).toBeUndefined()
+  expect(r.usd).toBeCloseTo(2.01)
+  expect(spiderSource({ brand: 'A', officialDomains: [], nim: client, searchUsd: 0.01 }).estUsd).toBeCloseTo(0.052)
+})
+
+test('an OpenAI key alone switches classifying and research over, and NIM still works without it', () => {
+  expect(deciderFromConfig({ OPENAI_API_KEY: 'k' }, {}).mode).toBe('openai')
+  expect(deciderFromConfig({ OPENAI_API_KEY: 'k' }, {}).triage.id).toContain('openai-decisions')
+  expect(deciderFromConfig({ NIM_API_KEY: 'k' }, {}).mode).toBe('laya')
+  expect(reasonerFromConfig({ OPENAI_API_KEY: 'k', NIM_API_KEY: 'n' }).id).toContain('gpt-6-luna')
+  expect(reasonerFromConfig({ NIM_API_KEY: 'n' }).kbOnly).toBe(true)
 })

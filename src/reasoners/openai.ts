@@ -2,9 +2,9 @@ import type { KbProposal } from '../core/kb'
 import type { ReasonerVerdict } from '../core/machines/case'
 import type { Assessment, AssessRequest, KbRequest, Reasoner } from './types'
 
-// Placeholders, because Luna's rates were not available when this was written. Override by env.
-const DEFAULT_IN = 1
-const DEFAULT_OUT = 4
+// Reported by resellers, not OpenAI's own rate card. Override by env.
+const DEFAULT_IN = 0.1
+const DEFAULT_OUT = 0.5
 const VERDICTS: ReasonerVerdict[] = ['infringing', 'legitimate', 'unsure']
 
 type Opts = {

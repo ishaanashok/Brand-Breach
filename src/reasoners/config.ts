@@ -8,7 +8,7 @@ import type { Reasoner } from './types'
 type Env = Record<string, string | undefined>
 
 export function reasonerFromConfig(env: Env, fixtures: Record<string, KbProposal[]> = {}): Reasoner {
-  const mode = env.REASONER_MODE ?? (env.OPENAI_API_KEY ? 'openai' : 'mock')
+  const mode = env.REASONER_MODE ?? (env.OPENAI_API_KEY ? 'openai' : env.NIM_API_KEY ? 'glm' : 'mock')
   if (mode === 'glm') {
     if (!env.NIM_API_KEY) throw new Error('REASONER_MODE=glm needs NIM_API_KEY')
     return glmKbReasoner({
