@@ -172,6 +172,17 @@ export function htmlToPage(url: string, html: string): Page {
   return { url, title, text }
 }
 
+/** Why a page couldn't be read, in words a reviewer can use. */
+export function readProblem(err: unknown): string {
+  const s = String(err)
+  if (/HTTP (401|403|406|429)/.test(s)) return 'The site refused our reader, which usually means it blocks bots'
+  if (/ENOTFOUND|EAI_/.test(s)) return 'The site has no working address, so it may be gone'
+  if (/not a page/.test(s)) return 'This is a file such as a PDF, not a web page'
+  if (/timed out|Timeout/i.test(s)) return 'The site took too long to answer'
+  if (/HTTP (404|410)/.test(s)) return 'The page no longer exists'
+  return 'The site could not be reached'
+}
+
 /** Reads a page as text. No scripts run and nothing on the page is loaded or submitted. */
 export async function readPage(raw: string, o: { fetch?: Fetch; resolve?: typeof lookup } = {}): Promise<Page> {
   const f = o.fetch ?? fetch

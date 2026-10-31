@@ -1,9 +1,10 @@
 import { SURFACES, type Step } from '../types.js'
 import type { LaneStat } from './brand.js'
+import { SEED_COMMENTARY, normalizeCommentary } from '../commentary.js'
 
-export type PlaybookState = { version: number; priors: Record<string, LaneStat>; hunts: string[] }
+export type PlaybookState = { version: number; priors: Record<string, LaneStat>; hunts: string[]; commentary?: string[] }
 
-export const initialPlaybook = (): PlaybookState => ({ version: 0, priors: {}, hunts: [] })
+export const initialPlaybook = (): PlaybookState => ({ version: 0, priors: {}, hunts: [], commentary: SEED_COMMENTARY })
 
 const v = (s: PlaybookState, patch: Partial<PlaybookState>): PlaybookState => ({ ...s, ...patch, version: s.version + 1 })
 
@@ -12,6 +13,9 @@ const isAnonymousKey = (k: string) => {
   const [source, strategy, extra] = k.split('/')
   return extra === undefined && SURFACES.includes(source as any) && !!strategy && /^[a-z0-9-]+$/.test(strategy)
 }
+
+// A playbook saved before this list existed still has to start from the seed.
+const commentaryOf = (s: PlaybookState) => s.commentary ?? SEED_COMMENTARY
 
 export const playbook = {
   update(s: PlaybookState, lane: string, d: LaneStat): Step<PlaybookState, null> {
@@ -27,6 +31,19 @@ export const playbook = {
   },
   listHunts(s: PlaybookState): Step<PlaybookState, string[]> {
     return [s, s.hunts]
+  },
+  getCommentary(s: PlaybookState): Step<PlaybookState, string[]> {
+    return [s, commentaryOf(s)]
+  },
+  /** False if the entry would cover a whole shared platform. */
+  addCommentary(s: PlaybookState, raw: string): Step<PlaybookState, boolean> {
+    const entry = normalizeCommentary(raw)
+    if (!entry) return [s, false]
+    const list = commentaryOf(s)
+    return list.includes(entry) ? [s, true] : [v(s, { commentary: [...list, entry] }), true]
+  },
+  removeCommentary(s: PlaybookState, entry: string): Step<PlaybookState, null> {
+    return [v(s, { commentary: commentaryOf(s).filter(e => e !== entry) }), null]
   },
   snapshot(s: PlaybookState): Step<PlaybookState, PlaybookState> {
     return [s, s]

@@ -137,6 +137,7 @@ export class Scout {
     const b = await this.brand.snapshot()
     this.rules.whitelist = b.whitelist
     this.rules.kb = kbEntities(b)
+    this.rules.commentary = await this.d.store.playbook().getCommentary()
   }
 
   private async handleHit(hit: Hit): Promise<{ first: boolean; score?: number }> {
@@ -162,6 +163,11 @@ export class Scout {
     if (rule.skip) {
       await this.d.store.kase(id).skip(rule.skip)
       await this.hunt.bump('skipped')
+      return undefined
+    }
+    if (rule.clear) {
+      await this.d.store.kase(id).clear(rule.clear)
+      await this.hunt.bump('cleared')
       return undefined
     }
     const score = await this.triage(id, hit, rule.priceFlag)
@@ -191,11 +197,15 @@ export class Scout {
         score: sum.score, confidence: sum.confidence, why: sum.why, visualEvidenceUnavailable: res.visualEvidenceUnavailable,
       })
       await this.hunt.bump('triaged')
+      if (sum.discusses) {
+        await this.d.store.kase(id).clear(sum.why)
+        await this.hunt.bump('cleared')
+      }
       // Provisional reward; verification and the human correct it later.
       const key = hit.lane!
       await this.brand.recordLaneOutcome(key, { tries: 0, hits: sum.score, costUsd: res.usage.usd })
       await this.d.store.playbook().update(key, { tries: 0, hits: sum.score, costUsd: res.usage.usd })
-      await this.brand.markSeen(canonicalUrl(hit.url), { score: sum.score, state: 'triaged' })
+      await this.brand.markSeen(canonicalUrl(hit.url), { score: sum.score, state: sum.discusses ? 'cleared' : 'triaged' })
       return sum.score
     } catch (err) {
       await this.hunt.settle(r.id!, 0)

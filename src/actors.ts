@@ -36,6 +36,8 @@ export class Case extends Actor {
 
   async report(id: string, brandSlug: string, huntId: string, h: Hit, reporter: string, now: number): Promise<{ first: boolean; state: CaseState['state'] }> { return this.#run(kase.report(this.s, id, brandSlug, huntId, h, reporter, now)) }
   async skip(reason: string): Promise<null> { return this.#run(kase.skip(this.s, reason)) }
+  async clear(reason: string): Promise<null> { return this.#run(kase.clear(this.s, reason)) }
+  async markUnreadable(reason: string): Promise<null> { return this.#run(kase.markUnreadable(this.s, reason)) }
   async setTriage(t: DecisionRecord): Promise<null> { return this.#run(kase.setTriage(this.s, t)) }
   async markUndecided(reason: string): Promise<null> { return this.#run(kase.markUndecided(this.s, reason)) }
   async shortlist(): Promise<boolean> { return this.#run(kase.shortlist(this.s)) }
@@ -43,7 +45,7 @@ export class Case extends Actor {
   async setVerification(r: Verification): Promise<null> { return this.#run(kase.setVerification(this.s, r)) }
   async claimReasoning(agent: string, trigger: Reasoning['trigger'], now: number, staleMs: number): Promise<boolean> { return this.#run(kase.claimReasoning(this.s, agent, trigger, now, staleMs)) }
   async failReasoning(error: string): Promise<null> { return this.#run(kase.failReasoning(this.s, error)) }
-  async setReasoning(r: Pick<Reasoning, 'reasonerId' | 'verdict' | 'confidence' | 'reasoning' | 'usd' | 'latencyMs'>): Promise<{ state: CaseState['state']; newlyVerified: boolean }> { return this.#run(kase.setReasoning(this.s, r)) }
+  async setReasoning(r: Pick<Reasoning, 'reasonerId' | 'verdict' | 'confidence' | 'reasoning' | 'usd' | 'latencyMs'>): Promise<{ state: CaseState['state']; newlyVerified: boolean; retracted: boolean }> { return this.#run(kase.setReasoning(this.s, r)) }
   async draftNotice(notice: string): Promise<null> { return this.#run(kase.draftNotice(this.s, notice)) }
   async decide(decision: 'approve' | 'reject', by: string, now: number): Promise<{ changed: boolean; state: CaseState['state'] }> { return this.#run(kase.decide(this.s, decision, by, now)) }
   async recheck(result: string, now: number): Promise<null> { return this.#run(kase.recheck(this.s, result, now)) }
@@ -65,6 +67,8 @@ export class CaseShard extends Actor {
 
   async report(key: string, id: string, brandSlug: string, huntId: string, h: Hit, reporter: string, now: number): Promise<{ first: boolean; state: CaseState['state'] }> { return this.#run(key, s => kase.report(s, id, brandSlug, huntId, h, reporter, now)) }
   async skip(key: string, reason: string): Promise<null> { return this.#run(key, s => kase.skip(s, reason)) }
+  async clear(key: string, reason: string): Promise<null> { return this.#run(key, s => kase.clear(s, reason)) }
+  async markUnreadable(key: string, reason: string): Promise<null> { return this.#run(key, s => kase.markUnreadable(s, reason)) }
   async setTriage(key: string, t: DecisionRecord): Promise<null> { return this.#run(key, s => kase.setTriage(s, t)) }
   async markUndecided(key: string, reason: string): Promise<null> { return this.#run(key, s => kase.markUndecided(s, reason)) }
   async shortlist(key: string): Promise<boolean> { return this.#run(key, s => kase.shortlist(s)) }
@@ -72,7 +76,7 @@ export class CaseShard extends Actor {
   async setVerification(key: string, r: Verification): Promise<null> { return this.#run(key, s => kase.setVerification(s, r)) }
   async claimReasoning(key: string, agent: string, trigger: Reasoning['trigger'], now: number, staleMs: number): Promise<boolean> { return this.#run(key, s => kase.claimReasoning(s, agent, trigger, now, staleMs)) }
   async failReasoning(key: string, error: string): Promise<null> { return this.#run(key, s => kase.failReasoning(s, error)) }
-  async setReasoning(key: string, r: Pick<Reasoning, 'reasonerId' | 'verdict' | 'confidence' | 'reasoning' | 'usd' | 'latencyMs'>): Promise<{ state: CaseState['state']; newlyVerified: boolean }> { return this.#run(key, s => kase.setReasoning(s, r)) }
+  async setReasoning(key: string, r: Pick<Reasoning, 'reasonerId' | 'verdict' | 'confidence' | 'reasoning' | 'usd' | 'latencyMs'>): Promise<{ state: CaseState['state']; newlyVerified: boolean; retracted: boolean }> { return this.#run(key, s => kase.setReasoning(s, r)) }
   async draftNotice(key: string, notice: string): Promise<null> { return this.#run(key, s => kase.draftNotice(s, notice)) }
   async decide(key: string, decision: 'approve' | 'reject', by: string, now: number): Promise<{ changed: boolean; state: CaseState['state'] }> { return this.#run(key, s => kase.decide(s, decision, by, now)) }
   async recheck(key: string, result: string, now: number): Promise<null> { return this.#run(key, s => kase.recheck(s, result, now)) }
@@ -106,5 +110,8 @@ export class Playbook extends Actor {
   async getPriors(): Promise<Record<string, LaneStat>> { return this.#run(playbook.getPriors(this.s)) }
   async registerHunt(id: string): Promise<null> { return this.#run(playbook.registerHunt(this.s, id)) }
   async listHunts(): Promise<string[]> { return this.#run(playbook.listHunts(this.s)) }
+  async getCommentary(): Promise<string[]> { return this.#run(playbook.getCommentary(this.s)) }
+  async addCommentary(raw: string): Promise<boolean> { return this.#run(playbook.addCommentary(this.s, raw)) }
+  async removeCommentary(entry: string): Promise<null> { return this.#run(playbook.removeCommentary(this.s, entry)) }
   async snapshot(): Promise<PlaybookState> { return this.s }
 }

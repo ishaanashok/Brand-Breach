@@ -76,7 +76,7 @@ body:has(.note:not([hidden])) .stage { height: calc(100dvh - var(--head) - 38px)
 .web-point { position: absolute; left: -13px; top: -13px; width: 26px; height: 26px; padding: 0; border: 0; border-radius: 50%; background: none; pointer-events: auto; display: grid; place-items: center; color: #fff; animation: settle .35s ease-out; transition: none; }
 .web-point::before { content: ""; width: calc(6px * var(--z, 1)); height: calc(6px * var(--z, 1)); border-radius: 50%; background: #fff; transition: transform .15s; }
 .web-point:hover::before { transform: scale(1.7); }
-.web-point.state-cleared::before, .web-point.state-skipped::before, .web-point.state-rejected::before { background: #000; box-shadow: inset 0 0 0 1px rgba(255,255,255,.7); }
+.web-point.state-cleared::before, .web-point.state-skipped::before, .web-point.state-rejected::before, .web-point.state-unreadable::before { background: #000; box-shadow: inset 0 0 0 1px rgba(255,255,255,.7); }
 .web-point.state-undecided::before { background: #000; box-shadow: inset 0 0 0 1.5px #fff; width: 9px; height: 9px; }
 .web-point.spider { left: -19px; top: -19px; width: 38px; height: 38px; }
 .web-point.spider::before { display: none; }
@@ -121,7 +121,7 @@ tr.click { cursor: pointer; }
 tr.click:hover, tr.sel { background: var(--raised); }
 .state-awaiting_approval { font-weight: 600; }
 .state-approved { font-weight: 600; }
-.state-cleared, .state-skipped, .state-rejected { color: var(--muted); }
+.state-cleared, .state-skipped, .state-rejected, .state-unreadable { color: var(--muted); }
 .detail { background: var(--panel); border: 1px solid var(--line); border-radius: 18px; padding: 18px 20px; }
 .detail h2 { margin-top: 0; font-size: 18px; font-weight: 500; letter-spacing: -.01em; overflow-wrap: anywhere; }
 .detail p { overflow-wrap: anywhere; }

@@ -5,6 +5,7 @@ export type SearchResult = {
   /** Links found on pages that were already sent on by OnHits. */
   leads?: { lead: Lead; from: string }[]
 }
+export type Capture = { text?: string; problem?: string }
 /** Takes hits as soon as they're found, and says how many new ones look worth a closer look. */
 export type OnHits = (hits: Hit[]) => Promise<number>
 
@@ -21,8 +22,8 @@ export interface Source {
   restore?(known: { searches: number; urls: string[] }): void
   /** Why this source has nothing left to do, or null while it still has. */
   over?(): string | null
-  /** Page text for a shortlisted hit, which until then is only a search result. */
-  capture?(url: string): Promise<string | undefined>
+  /** Page text for a shortlisted hit, which until then is only a search result. Without text, it says why. */
+  capture?(url: string): Promise<Capture>
   /** Anything that limited this hunt's results, for its last line. */
   caveat?(): string | null
   /** An agent is out, or only just came back and may have left a lead for another to follow. */

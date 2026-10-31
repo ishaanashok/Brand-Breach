@@ -33,7 +33,7 @@ export function buildReport(h: HuntState, cases: CaseState[]) {
     deciders: Object.fromEntries(Object.entries(deciders).map(([id, d]) => [id, { calls: d.calls, medianMs: q(d.latencies, 0.5), p95Ms: q(d.latencies, 0.95) }])),
     perCase: cases.map(c => ({
       id: c.id, url: c.hit?.url, surface: c.hit?.surface, state: c.state, score: c.verification?.score ?? c.triage?.score ?? null,
-      decider: c.verification?.deciderId ?? c.triage?.deciderId ?? null, why: c.verification?.why ?? c.triage?.why ?? c.skipReason,
+      decider: c.verification?.deciderId ?? c.triage?.deciderId ?? null, why: c.skipReason ?? c.verification?.why ?? c.triage?.why,
     })),
   }
 }

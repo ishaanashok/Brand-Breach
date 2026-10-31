@@ -1,6 +1,6 @@
 import type { Answer, Hit, Step } from '../types.js'
 
-export type CaseStage = 'empty' | 'new' | 'skipped' | 'triaged' | 'undecided' | 'shortlisted' | 'cleared'
+export type CaseStage = 'empty' | 'new' | 'skipped' | 'triaged' | 'undecided' | 'shortlisted' | 'cleared' | 'unreadable'
   | 'verified' | 'awaiting_approval' | 'approved' | 'rejected'
 
 export type DecisionRecord = {
@@ -71,6 +71,14 @@ export const kase = {
   skip(s: CaseState, reason: string): Step<CaseState, null> {
     return s.state === 'new' ? [v(s, { state: 'skipped', skipReason: reason }), null] : [s, null]
   },
+  /** Not a takedown target, with the reason a person sees under "Not flagged". */
+  clear(s: CaseState, reason: string): Step<CaseState, null> {
+    return ['new', 'triaged', 'shortlisted'].includes(s.state) ? [v(s, { state: 'cleared', skipReason: reason }), null] : [s, null]
+  },
+  /** Nobody read the page, so no score it has means anything. */
+  markUnreadable(s: CaseState, reason: string): Step<CaseState, null> {
+    return s.state === 'shortlisted' ? [v(s, { state: 'unreadable', skipReason: reason }), null] : [s, null]
+  },
   setTriage(s: CaseState, t: DecisionRecord): Step<CaseState, null> {
     return s.state === 'new' ? [v(s, { triage: t, state: 'triaged' }), null] : [s, null]
   },
@@ -85,7 +93,7 @@ export const kase = {
   },
   setVerification(s: CaseState, r: Verification): Step<CaseState, null> {
     if (s.state !== 'shortlisted') return [s, null]
-    return [v(s, { verification: r, state: r.verified ? 'verified' : 'cleared' }), null]
+    return [v(s, { verification: r, state: r.verified ? 'verified' : 'cleared', skipReason: r.verified ? null : r.why }), null]
   },
   /** One reasoner per case. A claim whose agent died goes stale and can be taken over. */
   claimReasoning(s: CaseState, agent: string, trigger: Reasoning['trigger'], now: number, staleMs: number): Step<CaseState, boolean> {
@@ -97,18 +105,20 @@ export const kase = {
     return s.reasoning ? [v(s, { reasoning: { ...s.reasoning, status: 'failed', error } }), null] : [s, null]
   },
   /**
-   * A confident verdict can settle a case nobody has decided, or send one to a person.
-   * It can never remove a case already waiting for a person: that shows as a disagreement.
+   * A confident verdict can settle a case nobody has decided, send one to a person, or clear one waiting for a person.
+   * A person's decision is final, and a verdict against an earlier clearance shows as a disagreement.
    */
-  setReasoning(s: CaseState, r: Pick<Reasoning, 'reasonerId' | 'verdict' | 'confidence' | 'reasoning' | 'usd' | 'latencyMs'>): Step<CaseState, { state: CaseStage; newlyVerified: boolean }> {
-    if (!s.reasoning) return [s, { state: s.state, newlyVerified: false }]
+  setReasoning(s: CaseState, r: Pick<Reasoning, 'reasonerId' | 'verdict' | 'confidence' | 'reasoning' | 'usd' | 'latencyMs'>): Step<CaseState, { state: CaseStage; newlyVerified: boolean; retracted: boolean }> {
+    if (!s.reasoning) return [s, { state: s.state, newlyVerified: false, retracted: false }]
     const sure = (r.confidence ?? 0) >= REASONER_ACT_AT
     const open = s.state === 'undecided' || s.state === 'triaged'
     let state = s.state
     if (sure && r.verdict === 'infringing' && (open || s.state === 'cleared')) state = 'verified'
-    if (sure && r.verdict === 'legitimate' && open) state = 'cleared'
-    const disagrees = sure && ((r.verdict === 'legitimate' && (s.state === 'awaiting_approval' || s.state === 'verified')) || (r.verdict === 'infringing' && s.state === 'cleared'))
-    return [v(s, { state, reasoning: { ...s.reasoning, ...r, status: 'done', disagrees } }), { state, newlyVerified: state === 'verified' && s.state !== 'verified' }]
+    const retracted = sure && r.verdict === 'legitimate' && (s.state === 'awaiting_approval' || s.state === 'verified')
+    if (sure && r.verdict === 'legitimate' && (open || retracted)) state = 'cleared'
+    const disagrees = sure && r.verdict === 'infringing' && s.state === 'cleared'
+    const skipReason = state === 'cleared' && s.state !== 'cleared' ? `A second opinion found this legitimate: ${r.reasoning ?? 'no reason given'}` : s.skipReason
+    return [v(s, { state, skipReason, reasoning: { ...s.reasoning, ...r, status: 'done', disagrees } }), { state, newlyVerified: state === 'verified' && s.state !== 'verified', retracted }]
   },
   draftNotice(s: CaseState, notice: string): Step<CaseState, null> {
     return s.state === 'verified' ? [v(s, { notice, state: 'awaiting_approval' }), null] : [s, null]

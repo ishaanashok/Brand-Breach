@@ -4,6 +4,8 @@ import { estimateTokens } from './util'
 const SCAM = /(giveaway|double your|send .*(btc|eth|crypto)|wallet|airdrop|free tesla|\b90% off\b|replica|counterfeit|deepfake|official promo|limited claim|fake|knock.?off)/gi
 const BENIGN = /(review|owner'?s? manual|news|recall notice|fan club|forum discussion|repair guide|official store)/gi
 
+const WARNS = /(beware of|how to spot|scam alert|is .* a scam|warns? (about|of))/i
+
 const count = (t: string, r: RegExp) => (t.match(r) ?? []).length
 
 /**
@@ -21,6 +23,10 @@ export function mockDecider(): Decider {
       const signal = count(e.text, SCAM) - count(e.text, BENIGN)
       const p = Math.min(0.97, Math.max(0.03, 0.35 + signal * 0.22))
       const answers = qs.map((q): Answer => {
+        if (q.name === 'discusses_scam') {
+          const d = WARNS.test(e.text) ? 0.95 : 0.03
+          return { name: q.name, type: q.type, value: d >= 0.5, confidence: Math.max(d, 1 - d), probabilities: [{ value: true, p: d }, { value: false, p: 1 - d }] }
+        }
         if (q.type === 'predicate') {
           return { name: q.name, type: q.type, value: p >= 0.5, confidence: Math.max(p, 1 - p), probabilities: [{ value: true, p }, { value: false, p: 1 - p }] }
         }
