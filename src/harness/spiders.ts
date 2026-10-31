@@ -28,7 +28,8 @@ export function nimClient(c: NimConfig) {
   const retries = c.retries ?? RETRIES
   const label = c.openai ? 'OpenAI' : 'NIM'
   const settings = c.openai
-    ? { reasoning_effort: 'low', max_completion_tokens: 1500 }
+    // This endpoint refuses function tools on Luna at any other effort.
+    ? { reasoning_effort: 'none', max_completion_tokens: 1500 }
     : { ...(model.includes('glm') ? { reasoning_effort: 'low' } : {}), temperature: 0.5, top_p: 1, max_tokens: 1500 }
   return {
     model,
@@ -111,6 +112,7 @@ const MAX_RUNS_PER_LANE = 1
 const MAX_LEADS = 6
 const MAX_HITS = 8
 const MAX_SEARCHES_PER_RUN = 5
+const CLASSIFY_USD_PER_RUN = 0.012 // Measured at 385 tokens a page, this covers about 300 pages.
 const MAX_READS_PER_HOST = 3
 const SAME_QUERY = 0.7
 const BRIEF_QUERIES = 25
@@ -338,8 +340,8 @@ export function spiderSource(o: Omit<SpiderOpts, 'onActivity'> & { onActivity?: 
   }
   return {
     id: 'spiders',
-    // A run's worst case, plus a little for its model turns.
-    estUsd: o.searchUsd ? o.searchUsd * MAX_SEARCHES_PER_RUN + 0.002 : 0,
+    // A run's worst case, plus a little for its model turns and for classifying what it finds.
+    estUsd: o.searchUsd ? o.searchUsd * MAX_SEARCHES_PER_RUN + 0.002 + CLASSIFY_USD_PER_RUN : 0,
     restore: ({ searches, urls }) => memory.restore(searches, urls),
     touch: () => { lastWork = now() },
     caveat: () => (searchDegraded() ? 'Results were limited because DuckDuckGo is not answering. A search API key avoids this.' : null),

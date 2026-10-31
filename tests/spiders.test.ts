@@ -269,11 +269,11 @@ test('on OpenAI, agents use its settings and searches are charged', async () => 
   const client = nimClient({ apiKey: 'k', model: 'gpt-6-luna', openai: true, usdPerMInput: 1, fetch: (async (_: string, init: any) => { bodies.push(JSON.parse(init.body)); return Response.json({ choices: [{ message: { role: 'assistant', content: null, tool_calls: bodies.length === 1 ? [call('web_search', { query: 'acme' })] : [call('report', { candidates: [] })] } }], usage: { prompt_tokens: 1000000, completion_tokens: 0 } }) }) as any })
   const r = await runSpider({ ...base, nim: client, search, searchUsd: 0.01 })
   expect(bodies[0].max_completion_tokens).toBe(1500)
-  expect(bodies[0].reasoning_effort).toBe('low')
+  expect(bodies[0].reasoning_effort).toBe('none')
   expect(bodies[0].max_tokens).toBeUndefined()
   expect(bodies[0].temperature).toBeUndefined()
   expect(r.usd).toBeCloseTo(2.01)
-  expect(spiderSource({ brand: 'A', officialDomains: [], nim: client, searchUsd: 0.01 }).estUsd).toBeCloseTo(0.052)
+  expect(spiderSource({ brand: 'A', officialDomains: [], nim: client, searchUsd: 0.01 }).estUsd).toBeCloseTo(0.064)
 })
 
 test('an OpenAI key alone switches classifying and research over, and NIM still works without it', () => {
@@ -282,4 +282,12 @@ test('an OpenAI key alone switches classifying and research over, and NIM still 
   expect(deciderFromConfig({ NIM_API_KEY: 'k' }, {}).mode).toBe('laya')
   expect(reasonerFromConfig({ OPENAI_API_KEY: 'k', NIM_API_KEY: 'n' }).id).toContain('gpt-6-luna')
   expect(reasonerFromConfig({ NIM_API_KEY: 'n' }).kbOnly).toBe(true)
+})
+
+test('a page OpenAI tagged in a citation is one page with its untagged source', () => {
+  const items = parseLunaSearch({ output: [
+    { type: 'web_search_call', action: { sources: [{ type: 'url', url: 'https://a.example/x' }, { type: 'url', url: 'https://b.example/y?id=1' }] } },
+    { type: 'message', content: [{ text: 'A page', annotations: [{ type: 'url_citation', url: 'https://a.example/x?utm_source=openai', title: 'A', start_index: 6 }] }] },
+  ] })
+  expect(items.map(i => [i.url, i.title])).toEqual([['https://a.example/x', 'A'], ['https://b.example/y?id=1', 'https://b.example/y?id=1']])
 })

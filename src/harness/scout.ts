@@ -31,6 +31,8 @@ export class Scout {
   private stopped = false
   private unsub = () => {}
   private rules: RuleContext
+  /** What classifying has cost so far in the current run, paid from the run's hold. */
+  private runUsd: number | null = null
 
   constructor(public name: Surface, private d: ScoutDeps, private initialLane: Lane) {
     this.rules = { officialDomains: d.input.officialDomains, authorizedSellers: d.input.authorizedSellers, whitelist: [] }
@@ -79,7 +81,8 @@ export class Scout {
 
       const lead = this.leads.shift()
       if (lead) {
-        await this.iteration(onHits => this.d.source.followLead(lead, this.lane, onHits))
+        const r = await this.iteration(onHits => this.d.source.followLead(lead, this.lane, onHits))
+        if (!r) this.leads.unshift(lead)
       } else if (exhausted) {
         await Bun.sleep(this.d.delayMs)
         continue
@@ -111,17 +114,20 @@ export class Scout {
       fresh += n
       return n
     }
+    this.runUsd = 0
     try {
       result = await search(handle)
-      await this.hunt.settle(r.id!, result.usd)
+      await handle(result.hits)
+      await this.hunt.settle(r.id!, result.usd + this.runUsd)
     } catch (err) {
-      await this.hunt.settle(r.id!, 0)
+      await this.hunt.settle(r.id!, this.runUsd)
+      this.runUsd = null
       await this.hunt.log(`${this.name} search failed: ${String(err)}`, Date.now())
       return { found: 0, fresh: 0, failed: true }
     }
     await this.d.store.playbook().update(key, { tries: 1, hits: 0, costUsd: result.usd })
     await this.brand.recordLaneOutcome(key, { tries: 1, hits: 0, costUsd: result.usd })
-    await handle(result.hits)
+    this.runUsd = null
     for (const { lead, from } of result.leads ?? []) await this.shareLead(lead, canonicalUrl(from))
     return { found, fresh }
   }
@@ -164,7 +170,9 @@ export class Scout {
 
   private async triage(id: string, hit: Hit, priceFlag: boolean) {
     const text = hitText(hit) + (priceFlag ? '\nPrice is far below the usual price.' : '')
-    const est = (estimateTokens(text) / 1e6) * this.d.triage.price.usdPerMInput
+    // In a run the source's estimate already covers this, so other scouts' holds can't strand the page.
+    const inRun = this.runUsd !== null
+    const est = inRun ? 0 : (estimateTokens(text) / 1e6) * this.d.triage.price.usdPerMInput
     let r = await this.hunt.reserve(this.name, est, Date.now())
     // Pausing holds a page back; it must not lose it unclassified.
     while (!r.ok && r.reason === 'paused') {
@@ -174,7 +182,8 @@ export class Scout {
     if (!r.ok) return
     try {
       const res = await this.d.triage.decide({ text }, triageQuestions(this.d.input.brand), { timeoutMs: TRIAGE_TIMEOUT_MS })
-      await this.hunt.settle(r.id!, res.usage.usd)
+      if (inRun) this.runUsd = (this.runUsd ?? 0) + res.usage.usd
+      await this.hunt.settle(r.id!, inRun ? 0 : res.usage.usd)
       const sum = summarize(res.answers)
       await this.d.store.kase(id).setTriage({
         answers: res.answers, deciderId: res.deciderId, usd: res.usage.usd, latencyMs: res.usage.latencyMs,

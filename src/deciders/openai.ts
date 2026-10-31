@@ -35,7 +35,6 @@ function fromWire(a: any, q: Question): Answer {
   }
 }
 
-/** Written from the published guide; no account access yet, so only tested against stubs. */
 export function openaiDecider({ apiKey, baseUrl = 'https://api.openai.com', fetch: f = fetch }: Opts): Decider {
   const id = 'openai-decisions'
   return {

@@ -30,7 +30,6 @@ const VERDICT_SCHEMA = {
 const textOf = (body: any): string =>
   body.output_text ?? (body.output ?? []).flatMap((i: any) => i.content ?? []).map((c: any) => c.text ?? '').join('')
 
-/** Written from the published guide; no account access yet, so only tested against stubs. */
 export function openaiReasoner(o: Opts): Reasoner {
   const { apiKey, baseUrl = 'https://api.openai.com', model = 'gpt-6-luna', fetch: f = fetch, timeoutMs = 90_000 } = o
   const [pIn, pOut] = [o.usdPerMInput ?? DEFAULT_IN, o.usdPerMOutput ?? DEFAULT_OUT]

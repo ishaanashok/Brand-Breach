@@ -6,8 +6,15 @@ export const LUNA_USD_PER_M_INPUT = 0.1
 export const LUNA_USD_PER_M_OUTPUT = 0.5
 export const LUNA_SEARCH_USD = 0.012 // About $0.01 for the search, plus the tokens that read it.
 
-const MAX_RESULTS = 15
+const MAX_RESULTS = 60 // A real search returned 40 to 55 sources, and only the citations have titles.
 const RETRIES = 3
+
+/** OpenAI tags cited links, so the same page would otherwise look new when it appears untagged. */
+function untagged(raw: string): string {
+  const u = new URL(raw)
+  if (u.searchParams.get('utm_source') === 'openai') u.searchParams.delete('utm_source')
+  return u.href
+}
 
 /** Citations carry a title and a passage, and the source list adds pages the answer didn't cite. */
 export function parseLunaSearch(body: any): SearchItem[] {
@@ -17,22 +24,25 @@ export function parseLunaSearch(body: any): SearchItem[] {
     for (const part of item.content ?? []) {
       for (const a of part.annotations ?? []) {
         if (a.type !== 'url_citation' || typeof a.url !== 'string' || !/^https?:/.test(a.url)) continue
+        const url = untagged(a.url)
         const text = String(part.text ?? '')
         const snippet = text.slice(Math.max(0, (a.start_index ?? 0) - 300), a.start_index ?? 300).split('\n').at(-1)!.trim()
-        if (!found.has(a.url)) found.set(a.url, { url: a.url, title: String(a.title ?? a.url), snippet })
+        if (!found.has(url)) found.set(url, { url, title: String(a.title ?? url), snippet })
       }
     }
   }
   // The search call comes before the answer, but a citation says more about the same page.
   for (const item of output) {
     for (const s of item.action?.sources ?? []) {
-      if (typeof s?.url === 'string' && /^https?:/.test(s.url) && !found.has(s.url)) found.set(s.url, { url: s.url, title: String(s.title ?? s.url), snippet: '' })
+      if (typeof s?.url !== 'string' || !/^https?:/.test(s.url)) continue
+      const url = untagged(s.url)
+      if (!found.has(url)) found.set(url, { url, title: String(s.title ?? url), snippet: '' })
     }
   }
   return [...found.values()].slice(0, MAX_RESULTS)
 }
 
-/** Web search through OpenAI, standing in for scraping a search engine. Written against stubs: no key yet. */
+/** Web search through OpenAI, standing in for scraping a search engine. */
 export function lunaSearch(o: { apiKey: string; baseUrl?: string; model?: string; fetch?: typeof fetch }) {
   const f = o.fetch ?? fetch
   const base = o.baseUrl ?? 'https://api.openai.com'
