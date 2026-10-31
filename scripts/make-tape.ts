@@ -6,7 +6,7 @@ const h = (surface: Surface, url: string, title: string, snippet: string, truth:
   ({ url: `https://${url}`, surface, title, snippet, truth, ...extra })
 
 const wallet = '0xFEED00000000000000000000000000000000BEEF'
-const lanes: { source: Surface; strategy: string; pages: Hit[][] }[] = [
+const lanes: { source: Surface; strategy: string; pages: Hit[][]; blocked?: string }[] = [
   { source: 'marketplace', strategy: 'accessories', pages: [
     [h('marketplace', 'shopnow.example/item/key-fob-case', 'Key fob case for Model 3', 'Silicone case, third party, fits Tesla key fob. Review 4.5 stars.', false, { seller: 'casemaker' }),
      h('marketplace', 'shopnow.example/item/floor-mats', 'All-weather floor mats', 'Third party mats compatible with Tesla Model Y. Review 4.2 stars.', false, { seller: 'matworks' })],
@@ -50,6 +50,16 @@ const lanes: { source: Surface; strategy: string; pages: Hit[][] }[] = [
     [h('video', 'streamtube.example/watch?v=teslacryptolive{run}', 'Tesla crypto event live', 'AI deepfake giveaway stream.', true, { seller: 'tesla-live-event', evidenceText: 'Deepfake stream, giveaway language, same channel as an earlier case.' })],
   ] },
 ]
+
+// A site that refuses the scout, and a lane nobody owns, so the orchestrator has to change direction.
+lanes.push({ source: 'social', strategy: 'short-video-ads', blocked: 'HTTP 403 from the search provider', pages: [] })
+lanes.push({ source: 'domains', strategy: 'crypto-landing', pages: [
+  [h('domains', 'quickcoin-rewards-{run}.example', 'Tesla rewards portal', 'Claim rewards for car owners.', true, { evidenceText: 'Page copies Tesla branding and asks visitors to connect wallet to claim.' })],
+] })
+// Quiet listings the quick decision cannot call. Only the richer look settles them.
+const quiet = lanes.find(l => l.strategy === 'accessories')!
+quiet.pages[0]!.push(h('marketplace', 'shopnow.example/item/model-3-bundle-{run}', 'Model 3 start-up bundle', 'Bundle for new owners, ships worldwide.', true, { seller: 'evbundles-co', evidenceText: 'Photos show counterfeit Tesla branding on every item.' }))
+quiet.pages[0]!.push(h('marketplace', 'shopnow.example/item/wall-plate-{run}', 'Charging wall plate', 'Plate for home charging setups.', false, { evidenceText: 'Plain product photos, no logos.' }))
 
 // The brand's own presences turn up in searches too. The knowledge base should clear these for free.
 const own = (strategy: string, hit: Hit) => lanes.find(l => l.strategy === strategy)!.pages[0]!.push(hit)

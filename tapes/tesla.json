@@ -24,6 +24,23 @@
       "seller": "matworks"
      },
      {
+      "url": "https://shopnow.example/item/model-3-bundle-{run}",
+      "surface": "marketplace",
+      "title": "Model 3 start-up bundle",
+      "snippet": "Bundle for new owners, ships worldwide.",
+      "truth": true,
+      "seller": "evbundles-co",
+      "evidenceText": "Photos show counterfeit Tesla branding on every item."
+     },
+     {
+      "url": "https://shopnow.example/item/wall-plate-{run}",
+      "surface": "marketplace",
+      "title": "Charging wall plate",
+      "snippet": "Plate for home charging setups.",
+      "truth": false,
+      "evidenceText": "Plain product photos, no logos."
+     },
+     {
       "url": "https://shopnow.example/store/tesla-official/wall-connector",
       "surface": "marketplace",
       "title": "Wall Connector",
@@ -398,6 +415,28 @@
       "truth": true,
       "seller": "tesla-live-event",
       "evidenceText": "Deepfake stream, giveaway language, same channel as an earlier case."
+     }
+    ]
+   ]
+  },
+  {
+   "source": "social",
+   "strategy": "short-video-ads",
+   "blocked": "HTTP 403 from the search provider",
+   "pages": []
+  },
+  {
+   "source": "domains",
+   "strategy": "crypto-landing",
+   "pages": [
+    [
+     {
+      "url": "https://quickcoin-rewards-{run}.example",
+      "surface": "domains",
+      "title": "Tesla rewards portal",
+      "snippet": "Claim rewards for car owners.",
+      "truth": true,
+      "evidenceText": "Page copies Tesla branding and asks visitors to connect wallet to claim."
      }
     ]
    ]

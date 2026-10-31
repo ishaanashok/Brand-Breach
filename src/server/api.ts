@@ -1,16 +1,19 @@
 import type { ServerWebSocket } from 'bun'
+import { buildGraph, type Graph } from '../core/graph'
+import { entityFrom, kbEntities, type KbKind } from '../core/kb'
 import { redactDeep, sensitiveTerms } from '../core/redact'
 import { buildReport } from '../core/report'
 import { encodeTag } from '../core/tags'
 import { SURFACES, slug, type Decider, type HuntInput, type Surface } from '../core/types'
 import { HuntRunner, type Timing } from '../harness/hunt-runner'
 import type { Source } from '../harness/source'
+import type { Reasoner } from '../reasoners/types'
 import type { Bus } from '../relay/types'
 import type { Store } from '../store/types'
 
 export type AppConfig = {
   port: number; store: Store; mode: string; verifyEstUsd: number; timing: Timing
-  triage: Decider; verify: Decider
+  triage: Decider; verify: Decider; reasoner?: Reasoner
   makeBus: (huntId: string) => Promise<Bus>
   makeSource: (run: number, huntId: string) => Source
   feedMs?: number
@@ -40,7 +43,7 @@ export async function createServer(cfg: AppConfig): Promise<App> {
 
   const deps = async (huntId: string, run: number) => ({
     store, bus: await cfg.makeBus(huntId), source: cfg.makeSource(run, huntId),
-    triage: cfg.triage, verify: cfg.verify, verifyEstUsd: cfg.verifyEstUsd, timing: cfg.timing,
+    triage: cfg.triage, verify: cfg.verify, verifyEstUsd: cfg.verifyEstUsd, timing: cfg.timing, reasoner: cfg.reasoner,
   })
 
   /** What every viewer sees: built only from actor snapshots, with handles and wallets blurred. */
@@ -53,16 +56,21 @@ export async function createServer(cfg: AppConfig): Promise<App> {
     ])
     return { hunt, cases, brand }
   }
+  /** Infringers' handles are blurred on screen; a brand's own verified names are public by definition. */
+  const termsFor = (cases: Parameters<typeof sensitiveTerms>[0], b: Parameters<typeof kbEntities>[0] & { edges: { to: string }[] }) => {
+    const own = new Set(kbEntities(b).filter(e => e.status === 'verified').map(e => e.value))
+    return sensitiveTerms(cases, b.edges).filter(t => !own.has(t.toLowerCase()))
+  }
   const publicView = async (id: string) => {
     const v = await view(id)
     if (!v) return null
     return redactDeep({
       version: v.hunt.version + v.cases.reduce((a, c) => a + c.version, 0) + v.brand.version,
       hunt: v.hunt, cases: v.cases,
-      graph: { edges: v.brand.edges }, lanes: v.brand.laneStats, thresholds: v.brand.thresholds, labels: v.brand.labels.length,
+      graph: buildGraph(v.brand, v.cases, v.hunt), kb: { entities: kbEntities(v.brand), builtBy: v.brand.kb?.builtBy ?? null, builtAt: v.brand.kb?.builtAt ?? null }, lanes: v.brand.laneStats, thresholds: v.brand.thresholds, labels: v.brand.labels.length,
       fallbacks: cfg.deciderLog?.fallbacks.slice(-20) ?? [],
       priorHunts: v.brand.hunts - 1, disclaimer: 'Candidates flagged for review.',
-    }, sensitiveTerms(v.cases, v.brand.edges))
+    }, termsFor(v.cases, v.brand))
   }
 
   const server = Bun.serve<{ hunt: string }>({
@@ -106,7 +114,7 @@ export async function createServer(cfg: AppConfig): Promise<App> {
 
   async function route(req: Request, p: string): Promise<Response> {
     const body = req.method === 'POST' ? await req.json().catch(() => ({})) : null
-    if (p === '/api/config') return json({ mode: cfg.mode, triage: cfg.triage.id, verify: cfg.verify.id, surfaces: SURFACES })
+    if (p === '/api/config') return json({ mode: cfg.mode, triage: cfg.triage.id, verify: cfg.verify.id, reasoner: cfg.reasoner?.id ?? null, surfaces: SURFACES })
     if (p === '/api/hunts' && req.method === 'GET') return json({ hunts: await store.playbook().listHunts() })
     if (p === '/api/hunts' && req.method === 'POST') {
       const input = parseInput(body)
@@ -118,6 +126,8 @@ export async function createServer(cfg: AppConfig): Promise<App> {
       await r.start(input)
       return json({ id })
     }
+    const br = p.match(/^\/api\/brands\/([\w-]+)\/(kb|graph)$/)
+    if (br) return brandRoute(req, br[1]!, br[2]!, body)
     const m = p.match(/^\/api\/hunts\/([\w-]+)(?:\/(.+))?$/)
     if (!m) return json({ error: 'not found' }, 404)
     const [, id, rest] = m as unknown as [string, string, string | undefined]
@@ -170,6 +180,35 @@ export async function createServer(cfg: AppConfig): Promise<App> {
       return json(await r.decide(caseId, body.decision, 'reviewer'))
     }
     return json({ error: 'not found' }, 404)
+  }
+
+  /** The graph across every hunt for a brand, with an optional focus on one node's neighbours. */
+  async function brandRoute(req: Request, brandSlug: string, what: string, body: any): Promise<Response> {
+    const client = store.brand(brandSlug)
+    const b = await client.snapshot()
+    if (!b.slug) return json({ error: 'unknown brand' }, 404)
+    if (what === 'kb') {
+      if (req.method === 'POST') {
+        if (body?.action === 'remove' && typeof body.id === 'string') { await client.removeKbEntity(body.id); return json({ ok: true }) }
+        const e = body?.action === 'add' && ['domain', 'account', 'seller', 'channel'].includes(body.kind) && typeof body.value === 'string'
+          ? entityFrom(body.kind as KbKind, body.value, 'human', 1, 'Added by the reviewer') : null
+        if (!e) return json({ error: 'not a value that can be trusted: use a brand-owned domain, or host/path for an account' }, 400)
+        await client.addKbEntity(e)
+        return json({ ok: true, entity: e })
+      }
+      return json({ entities: kbEntities(b), builtBy: b.kb?.builtBy ?? null, builtAt: b.kb?.builtAt ?? null })
+    }
+    const hunts = (await Promise.all((await store.playbook().listHunts()).map(h => store.hunt(h).snapshot())))
+      .filter(h => h.input && slug(h.input.brand) === brandSlug)
+    const cases = await Promise.all([...new Set(hunts.flatMap(h => h.caseIds))].map(c => store.kase(c).snapshot()))
+    const graph = buildGraph(b, cases)
+    const node = new URL(req.url).searchParams.get('node')
+    const focus = (g: Graph): Graph => {
+      const edges = g.edges.filter(e => e.from === node || e.to === node)
+      const ids = new Set([node, ...edges.flatMap(e => [e.from, e.to])])
+      return { nodes: g.nodes.filter(n => ids.has(n.id)), edges }
+    }
+    return json(redactDeep(node ? focus(graph) : graph, termsFor(cases, b)))
   }
 
   return {

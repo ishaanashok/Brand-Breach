@@ -77,3 +77,23 @@ test('pause and budget controls', async () => {
   await post(`/api/hunts/${id}/control`, { action: 'resume' })
   expect((await post(`/api/hunts/${id}/control`, { action: 'bogus' })).status).toBe(400)
 })
+
+test('graph and knowledge base APIs: query, add, refuse a platform, remove', async () => {
+  const res = await post('/api/hunts', { ...input, brand: 'KbBrand', officialDomains: ['kbbrand.example'] })
+  const { id } = await res.json() as any
+  const until = async () => { for (let i = 0; i < 200; i++) { const v: any = await (await fetch(`${base}/api/hunts/${id}`)).json(); if (v.hunt?.caseIds.length) return v; await Bun.sleep(10) } throw new Error('no cases') }
+  const v = await until()
+  expect(v.graph.nodes.some((n: any) => n.id === 'domain:kbbrand.example' && n.trust === 'verified')).toBe(true)
+  const kb = '/api/brands/kbbrand/kb'
+  expect((await post(kb, { action: 'add', kind: 'domain', value: 'youtube.com' })).status).toBe(400)
+  expect((await post(kb, { action: 'add', kind: 'account', value: 'chirp.example/kbbrand' })).status).toBe(200)
+  let list: any = await (await fetch(`${base}${kb}`)).json()
+  expect(list.entities.find((e: any) => e.id === 'account:chirp.example/kbbrand').source).toBe('human')
+  await post(kb, { action: 'remove', id: 'account:chirp.example/kbbrand' })
+  list = await (await fetch(`${base}${kb}`)).json()
+  expect(list.entities.some((e: any) => e.id === 'account:chirp.example/kbbrand')).toBe(false)
+  const g: any = await (await fetch(`${base}/api/brands/kbbrand/graph?node=${encodeURIComponent('domain:kbbrand.example')}`)).json()
+  expect(g.nodes.length).toBeGreaterThanOrEqual(2)
+  expect(g.edges.every((e: any) => e.from === 'domain:kbbrand.example' || e.to === 'domain:kbbrand.example')).toBe(true)
+  expect((await fetch(`${base}/api/brands/nobody/graph`)).status).toBe(404)
+})

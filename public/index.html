@@ -13,6 +13,7 @@
     <button data-tab="setup" class="on">Setup</button>
     <button data-tab="live">Live hunt</button>
     <button data-tab="graph">Graph</button>
+    <button data-tab="kb">Knowledge base</button>
     <button data-tab="cases">Cases</button>
     <button data-tab="report">Report</button>
   </nav>
@@ -55,16 +56,51 @@
     </p>
     <h2>Scouts</h2>
     <table><thead><tr><th>Scout</th><th>Lane</th><th>Status</th><th>Hits per dollar</th></tr></thead><tbody id="roster"></tbody></table>
-    <h2>Steering log</h2>
-    <ul id="steers"></ul>
+    <h2>Orchestrator: steering</h2>
+    <p class="muted">When a search stops working, the orchestrator moves that scout somewhere better and says why.</p>
+    <ul id="steers" class="timeline"></ul>
+    <h2>Orchestrator: reasoning agents</h2>
+    <p class="muted">Spawned for what quick decisions could not settle: failed, unsure, or top of the review queue.</p>
+    <table><thead><tr><th>Agent</th><th>Why spawned</th><th>Candidate</th><th>Model</th><th>Outcome</th></tr></thead><tbody id="spawns"></tbody></table>
+    <h2>Events</h2>
+    <ul id="events" class="muted"></ul>
     <h2>Decider fallbacks</h2>
     <ul id="fallbacks"></ul>
   </section>
 
   <section id="graph" hidden>
-    <p class="muted">Sellers, listings, domains, wallets and channels linked by leads. Click a node to see its cases.</p>
-    <svg id="graphSvg" viewBox="0 0 900 560" role="img" aria-label="Graph of linked entities"></svg>
-    <ul id="graphCases"></ul>
+    <div class="graph-bar">
+      <label class="check"><input type="checkbox" data-layer="knowledge" checked> Knowledge</label>
+      <label class="check"><input type="checkbox" data-layer="findings" checked> Findings</label>
+      <label class="check"><input type="checkbox" data-layer="orchestration" checked> Orchestration</label>
+      <span class="spacer"></span>
+      <button id="gZoomIn" aria-label="Zoom in">+</button>
+      <button id="gZoomOut" aria-label="Zoom out">−</button>
+      <button id="gFit">Fit</button>
+    </div>
+    <div class="graph-wrap">
+      <div class="graph-stage">
+        <canvas id="graphCanvas" role="img" aria-label="Graph of the brand's verified presences, the listings found, and the orchestrator's moves. The same nodes are listed in text beside it."></canvas>
+        <p id="graphEmpty" class="graph-empty muted">Start or open a hunt to see its graph.</p>
+      </div>
+      <aside class="graph-side">
+        <div id="graphInfo"><p class="muted">Select a node. Drag to rearrange, scroll to zoom.</p></div>
+        <ul id="graphLegend" class="legend"></ul>
+        <details><summary id="graphListTitle">All nodes</summary><ul id="graphList" class="nodelist"></ul></details>
+      </aside>
+    </div>
+  </section>
+
+  <section id="kb" hidden>
+    <p id="kbInfo" class="muted"></p>
+    <table><thead><tr><th>Kind</th><th>Value</th><th>Status</th><th>Source</th><th>Confidence</th><th>Evidence</th><th></th></tr></thead><tbody id="kbRows"></tbody></table>
+    <h2>Add a verified presence</h2>
+    <form id="kbForm" class="row">
+      <label>Kind <select name="kind"><option>domain</option><option>account</option><option>channel</option><option>seller</option></select></label>
+      <label>Value <input name="value" placeholder="brand.com, or host/path for an account" required></label>
+      <button>Add</button>
+    </form>
+    <p id="kbError" class="error" role="alert"></p>
   </section>
 
   <section id="cases" hidden>
@@ -77,6 +113,7 @@
     <div id="reportBody"></div>
   </section>
 </main>
+<script src="graph.js"></script>
 <script src="app.js"></script>
 </body>
 </html>

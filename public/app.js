@@ -13,6 +13,7 @@ function showTab(tab) {
   document.querySelectorAll('#tabs button').forEach(b => b.classList.toggle('on', b.dataset.tab === tab))
   document.querySelectorAll('main > section').forEach(s => { s.hidden = s.id !== tab })
   if (tab === 'report') renderReport()
+  GraphView.setVisible(tab === 'graph')
 }
 
 const post = (path, body) => fetch(path, { method: 'POST', body: JSON.stringify(body ?? {}) })
@@ -37,6 +38,8 @@ function open(id) {
   version = -1
   selected = null
   location.hash = id
+  GraphView.reset()
+  selectedNode = null
   connect()
 }
 
@@ -62,7 +65,9 @@ function render() {
   $('status').textContent = `${hunt.input.brand}: ${hunt.status.replace('_', ' ')}`
   renderLive(hunt)
   renderCases()
-  renderGraph()
+  GraphView.update(view.graph)
+  renderGraphText()
+  renderKb()
 }
 
 function renderLive(h) {
@@ -70,7 +75,7 @@ function renderLive(h) {
   const costPer = c.verified ? h.spent / c.verified : 0
   $('counters').innerHTML = [
     ['Seen', c.seen], ['Triaged', c.triaged], ['Shortlisted', c.shortlisted], ['Verified', c.verified], ['Approved', c.approved],
-    ['Duplicates prevented', c.duplicates], ['Undecided', c.undecided], ['Cost per verified', c.verified ? usd(costPer) : '–'],
+    ['Duplicates prevented', c.duplicates], ['Undecided', c.undecided], ['Reasoned', c.reasoned ?? 0], ['Verified presences known', view.kb.entities.filter(e => e.status === 'verified').length], ['Cost per verified', c.verified ? usd(costPer) : '–'],
   ].map(([k, v]) => `<div class="tile"><b>${esc(v)}</b><span>${esc(k)}</span></div>`).join('')
   const pct = Math.min(100, (h.spent / h.input.budgetUsd) * 100)
   $('meterFill').style.width = `${pct}%`
@@ -84,10 +89,20 @@ function renderLive(h) {
     return `<tr><td>${esc(name)}</td><td>${esc(s.lane.strategy)}</td><td>${esc(s.status.split(':')[0])}</td><td>${rate}</td></tr>`
   }).join('')
   $('steers').innerHTML = [...h.steers].reverse().map(s =>
-    `<li><b>${esc(s.scout)}</b>: ${esc(s.from)} → ${esc(s.to)}. <span class="muted">${esc(s.reason)}</span></li>`).join('') || '<li class="muted">No steers yet.</li>'
+    `<li><span class="badge steer-${esc(s.kind ?? 'yield')}">${esc(STEER_LABEL[s.kind] ?? 'steered')}</span> <b>${esc(s.scout)}</b>: ${esc(s.from)} → ${esc(s.to)}<br><span class="muted">${esc(s.reason)}</span></li>`).join('') || '<li class="muted">No steers yet.</li>'
+  $('spawns').innerHTML = [...(h.spawns ?? [])].reverse().map(s => {
+    const c = view.cases.find(x => x.id === s.caseId)
+    return `<tr class="click" data-id="${esc(s.caseId)}"><td>${esc(s.agent)}</td><td>${esc(TRIGGER_LABEL[s.trigger] ?? s.trigger)}</td><td class="url">${esc(c?.hit?.title)}</td><td>${esc(s.reasonerId)}</td><td>${esc(s.outcome ?? 'running')}</td></tr>`
+  }).join('') || '<tr><td colspan="5" class="muted">None spawned yet.</td></tr>'
+  $('spawns').querySelectorAll('tr[data-id]').forEach(r => { r.onclick = () => openCase(r.dataset.id) })
+  $('events').innerHTML = [...h.events].reverse().slice(0, 12).map(e => `<li>${esc(e.text)}</li>`).join('') || '<li>None.</li>'
   $('fallbacks').innerHTML = [...view.fallbacks].reverse().map(f =>
     `<li><b>${esc(f.from)}</b> fell through: <span class="muted">${esc(f.error)}</span></li>`).join('') || '<li class="muted">None.</li>'
 }
+
+const STEER_LABEL = { exhausted: 'Ran dry', blocked: 'Site failing', stalled: 'Not working', yield: 'Better yield', 'cross-surface': 'Changed direction', manual: 'Reviewer' }
+const TRIGGER_LABEL = { undecided: 'Decision failed', unsure: 'Decision unsure', top: 'Top candidate' }
+const openCase = id => { selected = id; showTab('cases'); renderCases() }
 
 const stageLabel = s => s.replaceAll('_', ' ')
 const rank = c => ['awaiting_approval', 'undecided', 'verified', 'shortlisted', 'triaged'].indexOf(c.state)
@@ -108,6 +123,15 @@ function renderCases() {
   renderDetail()
 }
 
+function reasoningHtml(r) {
+  if (!r) return ''
+  if (r.status === 'running') return `<p class="muted">${esc(r.agent)} is reasoning about this case.</p>`
+  if (r.status === 'failed') return `<p class="muted">The reasoning agent failed: ${esc(r.error)}</p>`
+  return `<div class="reasoned ${r.disagrees ? 'disagree' : ''}">
+    <p><b>${esc(r.reasonerId)}</b> says <b>${esc(r.verdict)}</b> (${(r.confidence ?? 0).toFixed(2)}): ${esc(r.reasoning)}</p>
+    ${r.disagrees ? '<p><b>This contradicts the decider. Look closely before deciding.</b></p>' : ''}</div>`
+}
+
 function renderDetail() {
   const c = view.cases.find(x => x.id === selected)
   if (!c) { $('caseDetail').innerHTML = ''; return }
@@ -118,6 +142,7 @@ function renderDetail() {
     <p class="url">${esc(c.hit?.url)} <span class="muted">(do not open outside a sandbox)</span></p>
     <p>${esc(c.hit?.snippet)}</p>
     <p><b>Why flagged:</b> ${esc(d?.why ?? c.skipReason ?? 'not classified')}</p>
+    ${reasoningHtml(c.reasoning)}
     ${d?.visualEvidenceUnavailable ? '<p class="muted">Visual evidence unavailable to this decider.</p>' : ''}
     ${c.hit?.evidenceText ? `<p><b>Evidence:</b> ${esc(c.hit.evidenceText)}</p>` : ''}
     <p class="muted">Reported by ${esc(c.reporters.join(', '))}</p>
@@ -138,30 +163,65 @@ function renderDetail() {
   })
 }
 
-function renderGraph() {
-  if (!view.graph.edges.length) { $('graphSvg').innerHTML = ''; return }
-  const kind = n => n.split(':')[0]
-  const nodes = [...new Set(view.graph.edges.flatMap(e => [e.from, e.to]))]
-  const W = 900, H = 560
-  const pos = new Map(nodes.map((n, i) => {
-    const a = (i / nodes.length) * Math.PI * 2
-    const r = kind(n) === 'listing' ? 240 : 130
-    return [n, [W / 2 + Math.cos(a) * r * 1.5, H / 2 + Math.sin(a) * r]]
-  }))
-  const label = n => { const v = n.slice(n.indexOf(':') + 1).replace(/^https:\/\//, ''); return v.length > 22 ? `${v.slice(0, 21)}…` : v }
-  $('graphSvg').innerHTML =
-    view.graph.edges.map(e => `<line x1="${pos.get(e.from)[0]}" y1="${pos.get(e.from)[1]}" x2="${pos.get(e.to)[0]}" y2="${pos.get(e.to)[1]}"/>`).join('') +
-    nodes.map(n => `<g><circle class="k-${esc(kind(n))}" data-n="${esc(n)}" cx="${pos.get(n)[0]}" cy="${pos.get(n)[1]}" r="8"><title>${esc(kind(n))}</title></circle><text x="${pos.get(n)[0] + 10}" y="${pos.get(n)[1] + 3}">${esc(label(n))}</text></g>`).join('')
-  $('graphSvg').querySelectorAll('circle').forEach(c => { c.onclick = () => showNode(c.dataset.n) })
+const LEGEND = [
+  ['verified', 'Verified real'], ['candidate', 'Possibly real, unproven'], ['infringing', 'Flagged for review'],
+  ['suspect', 'Linked or undecided'], ['cleared', 'Cleared'], ['agent', 'Agents and search lanes'],
+]
+$('graphLegend').innerHTML = LEGEND.map(([t, l]) => `<li><i class="dot t-${t}"></i>${l}</li>`).join('')
+document.querySelectorAll('[data-layer]').forEach(c => { c.onchange = () => GraphView.setLayer(c.dataset.layer, c.checked) })
+$('gZoomIn').onclick = () => GraphView.zoom(1.25)
+$('gZoomOut').onclick = () => GraphView.zoom(0.8)
+$('gFit').onclick = () => GraphView.fit()
+
+GraphView.init($('graphCanvas'), node => showNode(node))
+
+function renderGraphText() {
+  const { nodes } = view.graph
+  $('graphEmpty').hidden = nodes.length > 0
+  $('graphListTitle').textContent = `All nodes (${nodes.length})`
+  $('graphList').innerHTML = [...nodes].sort((a, b) => a.kind.localeCompare(b.kind)).map(n =>
+    `<li><button class="linklike" data-id="${esc(n.id)}"><i class="dot t-${esc(n.trust)}"></i>${esc(n.kind)}: ${esc(n.label)}</button></li>`).join('')
+  $('graphList').querySelectorAll('button').forEach(b => { b.onclick = () => GraphView.select(b.dataset.id) })
+  if (selectedNode) showNode(nodes.find(n => n.id === selectedNode.id) ?? null)
 }
 
+let selectedNode = null
+const TRUST_LABEL = Object.fromEntries(LEGEND)
 function showNode(node) {
-  const linked = new Set(view.graph.edges.filter(e => e.from === node || e.to === node).flatMap(e => [e.from, e.to]))
-  const hits = view.cases.filter(c => linked.has(`listing:${c.hit?.url}`))
-  $('graphCases').innerHTML = hits.map(c => `<li><a href="#" data-id="${esc(c.id)}">${esc(c.hit.title)}</a></li>`).join('') || '<li class="muted">No cases linked.</li>'
-  $('graphCases').querySelectorAll('a').forEach(a => {
-    a.onclick = e => { e.preventDefault(); selected = a.dataset.id; showTab('cases'); renderCases() }
-  })
+  selectedNode = node
+  if (!node) { $('graphInfo').innerHTML = '<p class="muted">Select a node. Drag to rearrange, scroll to zoom.</p>'; return }
+  const nameOf = id => view.graph.nodes.find(n => n.id === id)?.label ?? id
+  const links = view.graph.edges.filter(e => e.from === node.id || e.to === node.id)
+  $('graphInfo').innerHTML = `<h2>${esc(node.label)}</h2>
+    <p><i class="dot t-${esc(node.trust)}"></i>${esc(TRUST_LABEL[node.trust] ?? node.kind)} <span class="muted">· ${esc(node.kind)}</span></p>
+    ${node.detail ? `<p class="muted url">${esc(node.detail)}</p>` : ''}
+    ${node.source ? `<p class="muted">From ${esc(node.source)}, confidence ${node.confidence.toFixed(2)}</p>` : ''}
+    ${node.caseId ? `<p><button id="gOpenCase">Open case</button></p>` : ''}
+    <ul class="edgelist">${links.slice(0, 14).map(e => `<li><b>${esc(e.kind.replaceAll('_', ' '))}</b> ${esc(nameOf(e.from === node.id ? e.to : e.from))}${e.reason ? `<br><span class="muted">${esc(e.reason)}</span>` : ''}</li>`).join('')}</ul>`
+  const open = $('gOpenCase')
+  if (open) open.onclick = () => openCase(node.caseId)
+}
+
+function renderKb() {
+  const k = view.kb
+  $('kbInfo').textContent = k.builtBy
+    ? `Built by ${k.builtBy}${k.builtBy === 'mock-reasoner' ? ' from synthetic data, not real research' : ''}. Only verified entries clear a listing; candidates are hints. Kept for every later hunt on this brand.`
+    : 'No reasoning-model build yet; operator entries only.'
+  const order = { verified: 0, candidate: 1 }
+  $('kbRows').innerHTML = [...k.entities].sort((a, b) => order[a.status] - order[b.status]).map(e =>
+    `<tr><td>${esc(e.kind)}</td><td class="url">${esc(e.value)}</td><td class="status-${esc(e.status)}">${esc(e.status)}</td><td>${esc(e.source)}</td><td>${e.confidence.toFixed(2)}</td><td class="muted">${esc(e.evidence)}</td><td><button data-id="${esc(e.id)}" aria-label="Remove ${esc(e.value)}">Remove</button></td></tr>`).join('')
+  $('kbRows').querySelectorAll('button').forEach(b => { b.onclick = () => { b.disabled = true; post(kbPath(), { action: 'remove', id: b.dataset.id }) } })
+}
+const brandSlug = () => view.hunt.input.brand.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '')
+const kbPath = () => `/api/brands/${brandSlug()}/kb`
+$('kbForm').onsubmit = async e => {
+  e.preventDefault()
+  $('kbError').textContent = ''
+  if (!view) { $('kbError').textContent = 'Start or open a hunt first.'; return }
+  const f = new FormData(e.target)
+  const res = await post(kbPath(), { action: 'add', kind: f.get('kind'), value: f.get('value') })
+  if (res.ok) e.target.reset()
+  else $('kbError').textContent = (await res.json()).error
 }
 
 async function renderReport() {
@@ -201,7 +261,7 @@ $('export').onclick = async () => {
 
 async function boot() {
   const [cfg, hunts] = await Promise.all([fetch('/api/config').then(r => r.json()), fetch('/api/hunts').then(r => r.json())])
-  $('deciderInfo').textContent = `Triage: ${cfg.triage}. Verify: ${cfg.verify}.`
+  $('deciderInfo').textContent = `Triage: ${cfg.triage}. Verify: ${cfg.verify}. Reasoning: ${cfg.reasoner ?? 'off'}.`
   $('huntList').innerHTML = hunts.hunts.map(h => `<li><a href="#${esc(h)}" data-h="${esc(h)}">${esc(h)}</a></li>`).join('') || '<li>None yet.</li>'
   $('huntList').querySelectorAll('a').forEach(a => { a.onclick = e => { e.preventDefault(); open(a.dataset.h); showTab('live') } })
   const id = location.hash.slice(1)

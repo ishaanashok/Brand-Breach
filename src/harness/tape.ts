@@ -4,7 +4,7 @@ import type { SearchResult, Source } from './source'
 export type TapeFile = {
   note: string
   searchUsd: number
-  lanes: { source: Surface; strategy: string; pages: Hit[][] }[]
+  lanes: { source: Surface; strategy: string; pages: Hit[][]; blocked?: string }[]
   leadResults: Record<string, Hit[]>
 }
 
@@ -24,7 +24,10 @@ export function tapeSource(tape: TapeFile, { run = 1, delayMs = 0 }: { run?: num
     async search(lane: Lane): Promise<SearchResult> {
       await wait()
       const key = laneKey(lane)
-      const pages = tape.lanes.find(l => laneKey(l) === key)?.pages ?? []
+      const entry = tape.lanes.find(l => laneKey(l) === key)
+      // Recorded sites can fail too, which is what steering is for.
+      if (entry?.blocked) throw new Error(entry.blocked)
+      const pages = entry?.pages ?? []
       const i = cursor.get(key) ?? 0
       cursor.set(key, i + 1)
       return { hits: (pages[i] ?? []).map(fresh), usd: tape.searchUsd }
