@@ -2,7 +2,10 @@
 (() => {
   const OFFICIAL_DOMAINS = ['rolex.com', 'rolex.org']
 
-  // What the opening sequence gathers, in order.
+  // What the opening page says while it fills up, one after another.
+  const PHRASES = ['Finding official sources...', 'Compiling brand reference imagery...', 'Collecting official accounts...', 'Learning abuse patterns...']
+
+  // What the opening page gathers. Every section fills at once.
   const GATHER = [
     {
       title: 'Official websites', kind: 'rows', items: [
@@ -117,5 +120,5 @@
     return { nodes, edges }
   }
 
-  globalThis.RolexKb = { OFFICIAL_DOMAINS, GATHER, CLUSTERS, LINKS, buildGraph }
+  globalThis.RolexKb = { OFFICIAL_DOMAINS, PHRASES, GATHER, CLUSTERS, LINKS, buildGraph }
 })()

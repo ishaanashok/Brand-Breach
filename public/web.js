@@ -64,9 +64,20 @@
     }
   }
 
-  /** How serious a flagged listing looks, from green at a coin flip up to red when near certain. */
-  const levelOf = c => c.reasoning?.confidence ?? c.verification?.score ?? c.triage?.score ?? 0.5
-  const riskColor = score => `hsl(${Math.round(120 * (1 - Math.min(1, Math.max(0, (score - 0.5) / 0.5))))} 85% 55%)`
+  /** The same risk percent the Review tab shows. */
+  const levelOf = c => c.verification?.score ?? c.triage?.score ?? 0.5
+  // Most flagged pages score above 90%, so the top of the scale gets most of the hues.
+  const HUE_STOPS = [[0, 140], [0.5, 125], [0.7, 95], [0.85, 65], [0.95, 40], [1, 0]]
+  const riskHue = score => {
+    const s = Math.min(1, Math.max(0, score))
+    const i = HUE_STOPS.findIndex(([at]) => at >= s)
+    if (i <= 0) return HUE_STOPS[0][1]
+    const [a, hueA] = HUE_STOPS[i - 1], [b, hueB] = HUE_STOPS[i]
+    return Math.round(hueA + (hueB - hueA) * (s - a) / (b - a))
+  }
+  const riskColor = score => `hsl(${riskHue(score)} 85% 55%)`
+  /** Small nodes take a paler shade of the same hue, so that spiders stand out. */
+  const paleRiskColor = score => `hsl(${riskHue(score)} 70% 82%)`
 
   const HUB = { id: 'hub', x: 0, y: 0, woven: true }
   const INFRINGING = new Set(['verified', 'awaiting_approval', 'approved'])
@@ -327,7 +338,8 @@
     const old = earlierIds.has(c.id)
     const klass = `web-point state-${c.state}${spider ? ' spider' : ''}${old ? ' earlier' : ''}${c.id === chosen ? ' chosen' : ''}`
     if (el.className !== klass) el.className = klass
-    const color = spider ? riskColor(levelOf(c)) : ''
+    // Nobody read an unreadable page, so it has no real score to show.
+    const color = spider ? riskColor(levelOf(c)) : c.state === 'unreadable' ? '' : paleRiskColor(levelOf(c))
     if (el.style.color !== color) el.style.color = color
     if (spider && !el.firstChild) el.innerHTML = SPIDER
     if (!spider && el.firstChild) el.textContent = ''
@@ -548,5 +560,6 @@
 
   globalThis.WebLayout = createLayout
   globalThis.WebRiskColor = riskColor
+  globalThis.WebPaleRiskColor = paleRiskColor
   globalThis.WebView = { init, reset, update, setVisible, setInset }
 })()
