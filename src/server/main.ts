@@ -1,4 +1,6 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
+import { canonicalUrl } from '../core/canonical'
+import { slug } from '../core/types'
 import { deciderFromConfig } from '../deciders/config'
 import { sharedSlots } from '../deciders/util'
 import { DEMO_TIMING, SPIDER_TIMING } from '../harness/hunt-runner'
@@ -90,6 +92,7 @@ const app = await createServer({
           }),
           brand: input.brand, officialDomains: input.officialDomains, maxSearches: input.maxSearches,
           onSearch: () => { store.hunt(huntId).bump('searches').catch(() => {}) },
+          onKnownPage: url => { store.brand(slug(input.brand)).notePage(canonicalUrl(url), huntId, Date.now()).catch(() => {}) },
           gate: async () => { while ((await store.hunt(huntId).snapshot()).status === 'paused') await Bun.sleep(1000) },
           onActivity: (surface, text) => { store.hunt(huntId).log(`${SURFACE_LABEL[surface] ?? surface}: ${text}`, Date.now()).catch(() => {}) },
         })

@@ -1,5 +1,6 @@
 import { describe, expect, test } from 'bun:test'
-import { caseId, caseShard } from '../src/core/case-id'
+import { caseBrand, caseId } from '../src/core/case-id'
+import { wellFormed } from '../src/store/actors'
 import { addressDm, outbox, readDm, withBackoff } from '../src/relay/sdk'
 
 describe('outbox', () => {
@@ -25,16 +26,20 @@ describe('outbox', () => {
   })
 })
 
-describe('caseShard', () => {
-  test('spreads a brand over 16 actors at most', () => {
-    const shards = new Set(Array.from({ length: 500 }, (_, i) => caseShard(caseId('air-max', `https://a.example/${i}`))))
-    expect(shards.size).toBeLessThanOrEqual(16)
-    expect([...shards].every(s => s!.startsWith('air-max-'))).toBe(true)
+describe('caseBrand', () => {
+  test('puts every page of a brand on that brand', () => {
+    const brands = new Set(Array.from({ length: 500 }, (_, i) => caseBrand(caseId('air--max', `https://a.example/${i}`))))
+    expect([...brands]).toEqual(['air--max'])
   })
+})
 
-  test('leaves older ids on their own actors', () => {
-    expect(caseShard('case_3f5ca2a5904add68c794b7b4')).toBeNull()
-  })
+test('text cut mid-character can still be sent as JSON', () => {
+  const cut = '😀'.slice(0, 1)
+  const out = wellFormed({ hit: { snippet: `a${cut}`, tags: [cut] }, n: 1, none: null })
+  expect(out.hit.snippet.isWellFormed()).toBe(true)
+  expect(out.hit.tags[0]!.isWellFormed()).toBe(true)
+  expect(out.n).toBe(1)
+  expect(out.none).toBeNull()
 })
 
 describe('withBackoff', () => {

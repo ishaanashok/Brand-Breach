@@ -135,7 +135,7 @@ bun run check
 
 ## Known limits
 
-- The local actor runtime runs one process per live actor, so cases share 16 actors per brand. Hunts started on the file store (`.customs/live`) don't appear on the actor store.
+- The local actor runtime runs one process per live actor, so each brand is one actor holding its cases, pages, links and searches. Opening the hunt list wakes every old hunt for a while (about 35 processes with 33 hunts), and they stop by themselves. A brand handles one call at a time, so the hunt view can still pause during bursts of new pages (12 seconds at worst in the last live hunt). `scripts/import-history.ts` brings hunts from the older file store (`.customs/live`) into the actors, and only reads that folder.
 - Relay can take seconds a call. Sends never hold up an agent: direct messages go first, and when more than 100 channel posts are waiting the oldest are dropped. The actors stay the record of what happened.
 - A crash in the instant between creating a case and adding it to its hunt loses that case from the hunt's list. A later report only counts as a duplicate.
 - Screenshot capture needs a sandbox vendor and isn't built, so live mode has no visual evidence. The other P2 items in the plan are also not built.

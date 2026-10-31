@@ -12,13 +12,13 @@ const reports = await Promise.all(['a', 'b', 'c', 'd', 'e'].map(n => c.report(ra
 const firsts = reports.filter(r => r.first).length
 console.log(`dedupe: ${firsts} first, ${reports.length - firsts} duplicates`)
 
-// Many pages at once must share a fixed set of actors, with no case lost.
+// Many pages at once all land on one brand, with no case lost.
 const pages = Array.from({ length: 600 }, (_, i) => caseId(`verify-${tag}`, `https://race.example/page/${i}`))
 const started = performance.now()
 const firstReports = await Promise.all(pages.map(id => store.kase(id).report(id, 'verify', 'h', hit, 'a', Date.now())))
 const read = await Promise.all(pages.map(id => store.kase(id).snapshot()))
 const kept = read.filter((s, i) => s.id === pages[i]).length
-console.log(`shards: ${firstReports.filter(r => r.first).length} first, ${kept} of ${pages.length} kept, ${Math.round(performance.now() - started)}ms`)
+console.log(`one brand: ${firstReports.filter(r => r.first).length} first, ${kept} of ${pages.length} kept, ${Math.round(performance.now() - started)}ms`)
 
 const id = `budget_${tag}`
 const h = store.hunt(id)

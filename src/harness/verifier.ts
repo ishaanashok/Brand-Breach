@@ -78,7 +78,7 @@ async function verifyOne(d: VerifierDeps, c: CaseState): Promise<boolean> {
     })
     const key = hit.lane
     if (key) await brand.recordLaneOutcome(key, { tries: 0, hits: (verified ? 1 : 0) - c.triage!.score, costUsd: usd })
-    await brand.markSeen(hit.url, { score: sum.score, state: verified ? 'verified' : 'cleared' })
+    await brand.markSeen(hit.url, { score: sum.score, state: verified ? 'verified' : 'cleared' }, d.huntId, Date.now())
     if (verified) {
       await hunt.bump('verified')
       await hunt.markFirstVerified(Date.now())

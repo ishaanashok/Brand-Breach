@@ -1,7 +1,7 @@
 import { SURFACES, type Step } from '../types.js'
 import type { LaneStat } from './brand.js'
 
-export type PlaybookState = { version: number; priors: Record<string, LaneStat>; hunts: string[] }
+export type PlaybookState = { version: number; priors: Record<string, LaneStat>; hunts: string[]; adopted?: string[] }
 
 export const initialPlaybook = (): PlaybookState => ({ version: 0, priors: {}, hunts: [] })
 
@@ -27,6 +27,16 @@ export const playbook = {
   },
   listHunts(s: PlaybookState): Step<PlaybookState, string[]> {
     return [s, s.hunts]
+  },
+  /** Folds in an older store's history, once. */
+  adopt(s: PlaybookState, source: string, o: PlaybookState): Step<PlaybookState, boolean> {
+    if (s.adopted?.includes(source)) return [s, false]
+    const priors = { ...s.priors }
+    for (const [lane, d] of Object.entries(o.priors)) {
+      const p = priors[lane] ?? { tries: 0, hits: 0, costUsd: 0 }
+      priors[lane] = { tries: p.tries + d.tries, hits: p.hits + d.hits, costUsd: p.costUsd + d.costUsd }
+    }
+    return [v(s, { priors, hunts: [...new Set([...s.hunts, ...o.hunts])], adopted: [...(s.adopted ?? []), source] }), true]
   },
   snapshot(s: PlaybookState): Step<PlaybookState, PlaybookState> {
     return [s, s]

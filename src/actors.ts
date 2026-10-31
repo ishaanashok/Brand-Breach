@@ -1,5 +1,5 @@
-import { Actor, Persisted } from 'durable-actors'
-import { brand, initialBrand, type BrandState, type Edge, type Label, type LaneStat } from './core/machines/brand.js'
+import { Actor, Ephemeral, Persisted } from 'durable-actors'
+import { brand, initialBrand, type BrandState, type Edge, type Label, type LaneStat, type PageMemory, type SearchRecord } from './core/machines/brand.js'
 import { kase, initialCase, type CaseState, type DecisionRecord, type Reasoning, type Verification } from './core/machines/case.js'
 import { hunt, initialHunt, type Counters, type HuntState, type HuntStatus, type ReserveResult, type Spawn, type SteerKind } from './core/machines/hunt.js'
 import type { KbEntity } from './core/kb.js'
@@ -27,75 +27,122 @@ export class Hunt extends Actor {
   async recordSpawn(spawn: Spawn): Promise<null> { return this.#run(hunt.recordSpawn(this.s, spawn)) }
   async finishSpawn(agent: string, caseId: string, outcome: string, now: number): Promise<null> { return this.#run(hunt.finishSpawn(this.s, agent, caseId, outcome, now)) }
   async log(text: string, now: number): Promise<null> { return this.#run(hunt.log(this.s, text, now)) }
+  async adopt(state: HuntState): Promise<boolean> {
+    if (this.s.input) return false
+    this.s = state
+    return true
+  }
   async snapshot(): Promise<HuntState> { return this.s }
 }
 
-export class Case extends Actor {
-  @Persisted s: CaseState = initialCase()
-  #run<R>([next, r]: [CaseState, R]): R { this.s = next; return r }
-
-  async report(id: string, brandSlug: string, huntId: string, h: Hit, reporter: string, now: number): Promise<{ first: boolean; state: CaseState['state'] }> { return this.#run(kase.report(this.s, id, brandSlug, huntId, h, reporter, now)) }
-  async skip(reason: string): Promise<null> { return this.#run(kase.skip(this.s, reason)) }
-  async setTriage(t: DecisionRecord): Promise<null> { return this.#run(kase.setTriage(this.s, t)) }
-  async markUndecided(reason: string): Promise<null> { return this.#run(kase.markUndecided(this.s, reason)) }
-  async shortlist(): Promise<boolean> { return this.#run(kase.shortlist(this.s)) }
-  async addEvidence(text: string): Promise<null> { return this.#run(kase.addEvidence(this.s, text)) }
-  async setVerification(r: Verification): Promise<null> { return this.#run(kase.setVerification(this.s, r)) }
-  async claimReasoning(agent: string, trigger: Reasoning['trigger'], now: number, staleMs: number): Promise<boolean> { return this.#run(kase.claimReasoning(this.s, agent, trigger, now, staleMs)) }
-  async failReasoning(error: string): Promise<null> { return this.#run(kase.failReasoning(this.s, error)) }
-  async setReasoning(r: Pick<Reasoning, 'reasonerId' | 'verdict' | 'confidence' | 'reasoning' | 'usd' | 'latencyMs'>): Promise<{ state: CaseState['state']; newlyVerified: boolean }> { return this.#run(kase.setReasoning(this.s, r)) }
-  async draftNotice(notice: string): Promise<null> { return this.#run(kase.draftNotice(this.s, notice)) }
-  async decide(decision: 'approve' | 'reject', by: string, now: number): Promise<{ changed: boolean; state: CaseState['state'] }> { return this.#run(kase.decide(this.s, decision, by, now)) }
-  async recheck(result: string, now: number): Promise<null> { return this.#run(kase.recheck(this.s, result, now)) }
-  async snapshot(): Promise<CaseState> { return this.s }
-}
-
 /**
- * Holds many cases, because the local runtime runs one process per live actor and a hunt finds hundreds of pages.
- * Calls still run one at a time, so a case keeps the same guarantees it had as its own actor.
+ * One actor for each brand, holding everything learned about it across hunts: its knowledge base, every page
+ * and how it was judged, the links between them, and each search and how it went. Pages, links and searches
+ * are table rows, because a hunt writes hundreds and each write should only touch its own row.
  */
-export class CaseShard extends Actor {
-  @Persisted cases: Record<string, CaseState> = {}
-  #run<R>(id: string, step: (s: CaseState) => [CaseState, R]): R {
-    const before = this.cases[id] ?? initialCase()
-    const [next, r] = step(before)
-    if (next !== before) this.cases = { ...this.cases, [id]: next }
-    return r
-  }
-
-  async report(key: string, id: string, brandSlug: string, huntId: string, h: Hit, reporter: string, now: number): Promise<{ first: boolean; state: CaseState['state'] }> { return this.#run(key, s => kase.report(s, id, brandSlug, huntId, h, reporter, now)) }
-  async skip(key: string, reason: string): Promise<null> { return this.#run(key, s => kase.skip(s, reason)) }
-  async setTriage(key: string, t: DecisionRecord): Promise<null> { return this.#run(key, s => kase.setTriage(s, t)) }
-  async markUndecided(key: string, reason: string): Promise<null> { return this.#run(key, s => kase.markUndecided(s, reason)) }
-  async shortlist(key: string): Promise<boolean> { return this.#run(key, s => kase.shortlist(s)) }
-  async addEvidence(key: string, text: string): Promise<null> { return this.#run(key, s => kase.addEvidence(s, text)) }
-  async setVerification(key: string, r: Verification): Promise<null> { return this.#run(key, s => kase.setVerification(s, r)) }
-  async claimReasoning(key: string, agent: string, trigger: Reasoning['trigger'], now: number, staleMs: number): Promise<boolean> { return this.#run(key, s => kase.claimReasoning(s, agent, trigger, now, staleMs)) }
-  async failReasoning(key: string, error: string): Promise<null> { return this.#run(key, s => kase.failReasoning(s, error)) }
-  async setReasoning(key: string, r: Pick<Reasoning, 'reasonerId' | 'verdict' | 'confidence' | 'reasoning' | 'usd' | 'latencyMs'>): Promise<{ state: CaseState['state']; newlyVerified: boolean }> { return this.#run(key, s => kase.setReasoning(s, r)) }
-  async draftNotice(key: string, notice: string): Promise<null> { return this.#run(key, s => kase.draftNotice(s, notice)) }
-  async decide(key: string, decision: 'approve' | 'reject', by: string, now: number): Promise<{ changed: boolean; state: CaseState['state'] }> { return this.#run(key, s => kase.decide(s, decision, by, now)) }
-  async recheck(key: string, result: string, now: number): Promise<null> { return this.#run(key, s => kase.recheck(s, result, now)) }
-  async snapshot(key: string): Promise<CaseState> { return this.cases[key] ?? initialCase() }
-  async snapshotMany(keys: string[]): Promise<CaseState[]> { return keys.map(k => this.cases[k] ?? initialCase()) }
-}
-
 export class Brand extends Actor {
   @Persisted s: BrandState = initialBrand()
+  @Ephemeral tablesReady = false
   #run<R>([next, r]: [BrandState, R]): R { this.s = next; return r }
 
+  #tables() {
+    if (this.tablesReady) return
+    this.tablesReady = true
+    this.db.exec('CREATE TABLE IF NOT EXISTS cases (id TEXT PRIMARY KEY, json TEXT NOT NULL)')
+    this.db.exec('CREATE TABLE IF NOT EXISTS pages (url TEXT PRIMARY KEY, json TEXT NOT NULL)')
+    this.db.exec('CREATE TABLE IF NOT EXISTS edges (key TEXT PRIMARY KEY, json TEXT NOT NULL)')
+    this.db.exec('CREATE TABLE IF NOT EXISTS searches (n INTEGER PRIMARY KEY AUTOINCREMENT, json TEXT NOT NULL)')
+    // A brand from before these tables keeps its history.
+    if (Object.keys(this.s.seen ?? {}).length || this.s.edges?.length) {
+      for (const [url, page] of Object.entries(this.s.seen ?? {})) this.#savePage(url, page)
+      for (const e of this.s.edges ?? []) this.#saveEdge(e)
+      this.s = { ...this.s, seen: {}, edges: [] }
+    }
+  }
+  #savePage(url: string, page: PageMemory) { this.db.exec('INSERT OR REPLACE INTO pages (url, json) VALUES (?, ?)', url, JSON.stringify(page)) }
+  #saveEdge(e: Edge) { return this.db.exec('INSERT OR IGNORE INTO edges (key, json) VALUES (?, ?) RETURNING key', `${e.from}|${e.to}|${e.kind}`, JSON.stringify(e)).length }
+  #page(url: string): PageMemory | null {
+    this.#tables()
+    const row = this.db.exec<{ json: string }>('SELECT json FROM pages WHERE url = ?', url)[0]
+    return row ? JSON.parse(row.json) : null
+  }
+  /** Runs a machine step over just this page, and saves just this page. */
+  #pageStep<R>(url: string, step: (s: BrandState) => [BrandState, R]): R {
+    const known = this.#page(url)
+    const [next, r] = step({ ...this.s, seen: known ? { [url]: known } : {} })
+    if (next.seen[url] && next.version !== this.s.version) {
+      this.#savePage(url, next.seen[url]!)
+      this.s = { ...this.s, version: next.version }
+    }
+    return r
+  }
+  #case(id: string): CaseState {
+    this.#tables()
+    const row = this.db.exec<{ json: string }>('SELECT json FROM cases WHERE id = ?', id)[0]
+    return row ? JSON.parse(row.json) : initialCase()
+  }
+
+  /** Every case method, on the case it names. Calls still run one at a time, so a case keeps its guarantees. */
+  async caseCall(id: string, method: string, args: unknown[]): Promise<unknown> {
+    const before = this.#case(id)
+    const [next, r] = (kase as Record<string, any>)[method](before, ...args) as [CaseState, unknown]
+    if (next !== before) this.db.exec('INSERT OR REPLACE INTO cases (id, json) VALUES (?, ?)', id, JSON.stringify(next))
+    return r
+  }
+  async caseSnapshots(ids: string[]): Promise<CaseState[]> { return ids.map(id => this.#case(id)) }
+  /** Brings in cases kept elsewhere. A case already here wins, so an import can run again safely. */
+  async adoptCases(cases: CaseState[]): Promise<number> {
+    this.#tables()
+    return cases.reduce((n, c) => n + this.db.exec('INSERT OR IGNORE INTO cases (id, json) VALUES (?, ?) RETURNING id', c.id, JSON.stringify(c)).length, 0)
+  }
+  async adopt(source: string, other: BrandState): Promise<boolean> {
+    this.#tables()
+    for (const [url, page] of Object.entries(other.seen ?? {})) {
+      this.db.exec('INSERT OR IGNORE INTO pages (url, json) VALUES (?, ?)', url, JSON.stringify(page))
+    }
+    for (const e of other.edges ?? []) this.#saveEdge(e)
+    return this.#run(brand.adopt(this.s, source, other))
+  }
+
   async configure(slug: string, officialDomains: string[], authorizedSellers: string[]): Promise<BrandState> { return this.#run(brand.configure(this.s, slug, officialDomains, authorizedSellers)) }
-  async addEdges(edges: Edge[]): Promise<number> { return this.#run(brand.addEdges(this.s, edges)) }
+  async addEdges(edges: Edge[]): Promise<number> {
+    this.#tables()
+    const added = edges.reduce((n, e) => n + this.#saveEdge(e), 0)
+    if (added) this.s = { ...this.s, version: this.s.version + 1 }
+    return added
+  }
   async recordLaneOutcome(lane: string, d: LaneStat): Promise<LaneStat> { return this.#run(brand.recordLaneOutcome(this.s, lane, d)) }
   async addLabel(l: Label): Promise<boolean> { return this.#run(brand.addLabel(this.s, l)) }
-  async markSeen(url: string, r: { score: number; state: string }): Promise<null> { return this.#run(brand.markSeen(this.s, url, r)) }
-  async getSeen(url: string): Promise<{ score: number; state: string } | null> { return this.#run(brand.getSeen(this.s, url)) }
+  async markSeen(url: string, r: { score: number; state: string }, huntId = '', now = 0): Promise<null> { return this.#pageStep(url, s => brand.markSeen(s, url, r, huntId, now)) }
+  async getSeen(url: string): Promise<PageMemory | null> { return this.#page(url) }
+  async notePage(url: string, huntId: string, now: number): Promise<boolean> { return this.#pageStep(url, s => brand.notePage(s, url, huntId, now)) }
+  async recordSearch(r: SearchRecord): Promise<null> {
+    this.#tables()
+    this.db.exec('INSERT INTO searches (json) VALUES (?)', JSON.stringify(r))
+    return null
+  }
+  /** For rule checks on hot paths, which don't need every page this brand has ever seen. */
+  async summary(): Promise<BrandState> {
+    this.#tables()
+    return brand.summary(this.s)[1]
+  }
   async setKb(entities: KbEntity[], builtBy: string, now: number): Promise<number> { return this.#run(brand.setKb(this.s, entities, builtBy, now)) }
   async addKbEntity(e: KbEntity): Promise<null> { return this.#run(brand.addKbEntity(this.s, e)) }
   async removeKbEntity(id: string): Promise<null> { return this.#run(brand.removeKbEntity(this.s, id)) }
   async getThreshold(deciderId: string): Promise<number> { return this.#run(brand.getThreshold(this.s, deciderId)) }
   async getLaneStats(): Promise<Record<string, LaneStat>> { return this.#run(brand.getLaneStats(this.s)) }
-  async snapshot(): Promise<BrandState> { return this.s }
+  async snapshot(): Promise<BrandState> {
+    this.#tables()
+    const rows = (table: string, order: string) => this.db.exec<Record<string, string>>(`SELECT * FROM ${table} ORDER BY ${order}`)
+    const seen: BrandState['seen'] = {}
+    for (const r of rows('pages', 'url')) seen[r.url!] = JSON.parse(r.json!)
+    return {
+      ...this.s,
+      seen,
+      edges: rows('edges', 'key').map(r => JSON.parse(r.json!)),
+      searches: rows('searches', 'n').map(r => JSON.parse(r.json!)),
+    }
+  }
 }
 
 export class Playbook extends Actor {
@@ -106,5 +153,6 @@ export class Playbook extends Actor {
   async getPriors(): Promise<Record<string, LaneStat>> { return this.#run(playbook.getPriors(this.s)) }
   async registerHunt(id: string): Promise<null> { return this.#run(playbook.registerHunt(this.s, id)) }
   async listHunts(): Promise<string[]> { return this.#run(playbook.listHunts(this.s)) }
+  async adopt(source: string, other: PlaybookState): Promise<boolean> { return this.#run(playbook.adopt(this.s, source, other)) }
   async snapshot(): Promise<PlaybookState> { return this.s }
 }

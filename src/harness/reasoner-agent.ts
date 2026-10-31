@@ -24,7 +24,7 @@ export async function runReasoner(d: ReasonerAgentDeps, c: CaseState, trigger: E
   const kase = d.store.kase(c.id)
   const hit = c.hit!
   try {
-    const known = kbEntities(await brand.snapshot())
+    const known = kbEntities(await brand.summary())
     const res = await d.reasoner.assess({
       brand: d.input.brand, hit, trigger, deciderNotes: notesOf(c),
       verifiedEntities: known.filter(e => e.status === 'verified').map(e => `${e.kind} ${e.value}`),
@@ -42,7 +42,7 @@ export async function runReasoner(d: ReasonerAgentDeps, c: CaseState, trigger: E
       await d.me.send(REVIEW_CHANNEL, encodeTag('REVIEW', { caseId: c.id })).catch(() => {})
       if (hit.lane) await brand.recordLaneOutcome(hit.lane, { tries: 0, hits: 1 - (c.triage?.score ?? 0), costUsd: res.usage.usd })
     }
-    await brand.markSeen(hit.url, { score: res.confidence, state: out.state })
+    await brand.markSeen(hit.url, { score: res.confidence, state: out.state }, d.huntId, Date.now())
     const outcome = `${res.verdict} (${res.confidence.toFixed(2)})`
     await hunt.finishSpawn(d.agent, c.id, outcome, Date.now())
     await d.me.send(REVIEW_CHANNEL, encodeTag('VERDICT', { caseId: c.id, verdict: res.verdict, confidence: res.confidence, by: d.reasoner.id })).catch(() => {})

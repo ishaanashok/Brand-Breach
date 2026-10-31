@@ -190,7 +190,7 @@ export class HuntRunner {
     const h = await this.d.store.hunt(this.huntId).snapshot()
     const remaining = h.input!.budgetUsd - h.spent
     if (remaining < this.d.verifyEstUsd) return false
-    const { thresholds } = await this.d.store.brand(this.brandSlug).snapshot()
+    const { thresholds } = await this.d.store.brand(this.brandSlug).summary()
     const cases = await this.d.store.cases(h.caseIds)
     const earns = (score: number, deciderId: string) => score >= thresholdFor(thresholds[deciderId] ?? DEFAULT_THRESHOLD, this.input.precision)
     return cases.some(c => c.state === 'shortlisted' || (c.state === 'triaged' && earns(c.triage!.score, c.triage!.deciderId)))

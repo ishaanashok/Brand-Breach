@@ -124,17 +124,19 @@ export class Scout {
       await this.hunt.settle(r.id!, this.runUsd)
       this.runUsd = null
       await this.hunt.log(`${this.name} search failed: ${String(err)}`, Date.now())
+      await this.brand.recordSearch({ huntId: this.d.huntId, scout: this.name, lane: key, at: Date.now(), found, fresh, usd: 0, failed: true })
       return { found: 0, fresh: 0, failed: true }
     }
     await this.d.store.playbook().update(key, { tries: 1, hits: 0, costUsd: result.usd })
     await this.brand.recordLaneOutcome(key, { tries: 1, hits: 0, costUsd: result.usd })
+    await this.brand.recordSearch({ huntId: this.d.huntId, scout: this.name, lane: key, at: Date.now(), found, fresh, usd: result.usd })
     this.runUsd = null
     for (const { lead, from } of result.leads ?? []) await this.shareLead(lead, canonicalUrl(from))
     return { found, fresh }
   }
 
   private async refreshRules() {
-    const b = await this.brand.snapshot()
+    const b = await this.brand.summary()
     this.rules.whitelist = b.whitelist
     this.rules.kb = kbEntities(b)
   }
@@ -195,7 +197,7 @@ export class Scout {
       const key = hit.lane!
       await this.brand.recordLaneOutcome(key, { tries: 0, hits: sum.score, costUsd: res.usage.usd })
       await this.d.store.playbook().update(key, { tries: 0, hits: sum.score, costUsd: res.usage.usd })
-      await this.brand.markSeen(canonicalUrl(hit.url), { score: sum.score, state: 'triaged' })
+      await this.brand.markSeen(canonicalUrl(hit.url), { score: sum.score, state: 'triaged' }, this.d.huntId, Date.now())
       return sum.score
     } catch (err) {
       await this.hunt.settle(r.id!, 0)
