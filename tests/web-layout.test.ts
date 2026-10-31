@@ -56,3 +56,10 @@ test('the Rolex knowledge graph is the same every time and has no loose links', 
   expect(LINKS.filter(([x, y]: string[]) => !ids.has(x) || !ids.has(y))).toEqual([])
   expect(a.nodes.length).toBeGreaterThan(150)
 })
+
+test('every Rolex reference image is in the project', async () => {
+  await import('../public/kb-data.js' as string)
+  const images = (globalThis as any).RolexKb.GATHER.find((s: any) => s.kind === 'images').items
+  expect(images).toHaveLength(5)
+  for (const i of images) expect(await Bun.file(new URL(`../public/${i.src}`, import.meta.url).pathname).exists()).toBe(true)
+})
