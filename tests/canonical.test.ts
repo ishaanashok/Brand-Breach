@@ -1,5 +1,6 @@
 import { expect, test } from 'bun:test'
-import { canonicalUrl, caseId } from '../src/core/canonical'
+import { canonicalUrl } from '../src/core/canonical'
+import { caseId } from '../src/core/case-id'
 import { encodeTag, parseTag } from '../src/core/tags'
 
 test('variants of a listing share one canonical URL', () => {

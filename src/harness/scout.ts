@@ -1,4 +1,5 @@
-import { caseId, canonicalUrl } from '../core/canonical'
+import { canonicalUrl } from '../core/canonical'
+import { caseId } from '../core/case-id'
 import { kbEntities, matchKb } from '../core/kb'
 import type { SteerKind } from '../core/machines/hunt'
 import { hitText, summarize, triageQuestions } from '../core/questions'
