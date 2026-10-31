@@ -60,5 +60,6 @@ const app = await createServer({
   },
 })
 
-const resumed = await app.resumeAll()
+// With the actor runtime down there is nothing to resume yet, but the server still answers.
+const resumed = await app.resumeAll().catch(err => { log(`could not resume hunts: ${err}`); return [] as string[] })
 log(`listening on http://localhost:${app.port} (deciders ${triage.id} / ${verify.id}, reasoner ${reasoner.id})${resumed.length ? `, resumed ${resumed.join(', ')}` : ''}`)

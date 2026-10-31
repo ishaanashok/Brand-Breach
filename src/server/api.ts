@@ -232,7 +232,7 @@ export async function createServer(cfg: AppConfig): Promise<App> {
           runners.set(id, r)
           resumed.push(id)
         } catch (err) {
-          await store.hunt(id).log(`could not resume: ${err}`, Date.now())
+          await store.hunt(id).log(`could not resume: ${err}`, Date.now()).catch(() => console.error(`[customs] could not resume ${id}:`, err))
           console.error(`[customs] could not resume ${id}: ${err}`)
         }
       }

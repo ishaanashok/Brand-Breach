@@ -100,8 +100,7 @@ export class HuntRunner {
     const common = { huntId: this.huntId, input, brandSlug: this.brandSlug, store, bus, source: this.d.source, triage: this.d.triage, delayMs: this.d.timing.scoutDelayMs }
     this.scouts = SURFACES.map(s => new Scout(s, common, lanes[s]))
     await Promise.all(this.scouts.map(s => s.connect()))
-    if (!announce) await this.recoverStranded()
-    for (const s of this.scouts) this.loops.push(this.superviseScout(s))
+    for (const s of this.scouts) this.loops.push(this.superviseScout(s, !announce))
     // Scouts take their lane from the Hunt actor, so ASSIGN only announces it. A resume stays silent.
     if (announce) for (const s of SURFACES) await orchestratorMe.send(`@${s}`, encodeTag('ASSIGN', { lane: lanes[s], budgetSliceUsd: input.budgetUsd / SURFACES.length }))
 
@@ -119,26 +118,28 @@ export class HuntRunner {
   }
 
   /** A scout holds nothing worth keeping, so losing the actor runtime for a while costs only the time. */
-  private async superviseScout(s: Scout) {
+  private async superviseScout(s: Scout, recover: boolean) {
     const hunt = this.d.store.hunt(this.huntId)
     while (!this.stopped) {
       try {
+        if (recover) await this.recoverStranded(s.name)
         await s.run()
         return
       } catch (err) {
         await hunt.log(`${s.name} crashed, restarting: ${err}`, Date.now()).catch(() => {})
+        recover = true
         await Bun.sleep(this.d.timing.tickMs)
-        await this.recoverStranded(s.name).catch(() => {})
       }
     }
   }
 
-  private async recoverStranded(surface?: Surface) {
+  private async recoverStranded(surface: Surface) {
     const { caseIds } = await this.d.store.hunt(this.huntId).snapshot()
     const cases = await Promise.all(caseIds.map(id => this.d.store.kase(id).snapshot()))
-    const stranded = cases.filter(c => c.state === 'new' && (!surface || c.hit!.surface === surface))
+    const stranded = cases.filter(c => c.state === 'new' && c.hit!.surface === surface)
     if (stranded.length) await this.d.store.hunt(this.huntId).log(`Recovering ${stranded.length} cases left untriaged by a crash`, Date.now())
-    for (const c of stranded) await this.scouts.find(s => s.name === c.hit!.surface)?.recover(c)
+    const scout = this.scouts.find(s => s.name === surface)!
+    for (const c of stranded) await scout.recover(c)
   }
 
   /** The orchestrator's call: a short-lived agent with its own place on the bus and its own budget hold. */

@@ -147,7 +147,7 @@ test('restart: a case reported but never triaged before the crash still gets tri
   await store.hunt('h8').addCase('stranded')
   const r2 = new HuntRunner('h8', await deps(store))
   await r2.resume()
-  expect((await store.kase('stranded').snapshot()).state).not.toBe('new')
+  expect(await until(async () => (await store.kase('stranded').snapshot()).state !== 'new')).toBe(true)
   await r2.stop()
 })
 
