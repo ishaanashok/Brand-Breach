@@ -1,5 +1,5 @@
 import type { brand } from '../core/machines/brand'
-import type { kase } from '../core/machines/case'
+import type { CaseState, kase } from '../core/machines/case'
 import type { hunt } from '../core/machines/hunt'
 import type { playbook } from '../core/machines/playbook'
 
@@ -16,6 +16,8 @@ export type PlaybookClient = Client<typeof playbook>
 export interface Store {
   hunt(id: string): HuntClient
   kase(id: string): CaseClient
+  /** Many cases in input order, in as few calls as the store allows. */
+  cases(ids: string[]): Promise<CaseState[]>
   brand(slug: string): BrandClient
   playbook(): PlaybookClient
 }

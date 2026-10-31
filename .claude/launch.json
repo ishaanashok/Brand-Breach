@@ -1,4 +1,6 @@
 { "version": "0.0.1", "configurations": [
+  { "name": "actors", "runtimeExecutable": "bun", "runtimeArgs": ["run", "dev:actors"], "port": 7100, "url": "http://127.0.0.1:7100" },
+  { "name": "customs", "runtimeExecutable": "/bin/zsh", "runtimeArgs": ["-c", "PORT=3000 bun src/server/main.ts"], "port": 3000 },
   { "name": "customs-live", "runtimeExecutable": "/bin/zsh", "runtimeArgs": ["-c", "CUSTOMS_STORE=file CUSTOMS_BUS=memory CUSTOMS_STATE_DIR=.customs/live PORT=3000 bun src/server/main.ts"], "port": 3000 },
   { "name": "customs-offline", "runtimeExecutable": "/bin/zsh", "runtimeArgs": ["-c", "CUSTOMS_STORE=file CUSTOMS_BUS=memory CUSTOMS_SOURCE=tape DECIDER_MODE=mock REASONER_MODE=mock PORT=3000 bun src/server/main.ts"], "port": 3000 }
 ] }

@@ -50,6 +50,7 @@ export class MemoryStore implements Store {
 
   hunt = (id: string) => this.client(`hunt:${id}`, hunt, initialHunt)
   kase = (id: string) => this.client(`case:${id}`, kase, initialCase)
+  cases = (ids: string[]) => Promise.all(ids.map(id => this.kase(id).snapshot()))
   brand = (s: string) => this.client(`brand:${s}`, brand, initialBrand)
   playbook = () => this.client('playbook:global', playbook, initialPlaybook)
 }

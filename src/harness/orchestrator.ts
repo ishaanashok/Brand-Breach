@@ -64,7 +64,7 @@ export function createOrchestrator(d: OrchestratorDeps) {
     const room = MAX_REASONERS_PER_HUNT - (h.spawns?.length ?? 0)
     if (room <= 0) return []
     const [cases, { thresholds }] = await Promise.all([
-      Promise.all(h.caseIds.map(id => d.store.kase(id).snapshot())),
+      d.store.cases(h.caseIds),
       d.store.brand(d.brandSlug).snapshot(),
     ])
     const threshold = (c: CaseState) => thresholdFor(thresholds[c.triage?.deciderId ?? ''] ?? DEFAULT_THRESHOLD, d.input.precision)

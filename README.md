@@ -118,23 +118,25 @@ bun run check
 
 | Check | How | Result |
 | --- | --- | --- |
-| Test suite and types | `bun test`, `tsc` | 111 pass, clean |
-| Case dedupe and no budget overshoot | `verify-actors.ts` on real actors | 1 first and 4 duplicates, 0 overshoot |
-| Full hunt on real actors and real Relay | Tesla tape, mock deciders, $0.50 budget | Finished at $0.132: 18 verified, 3 own presences skipped, 12 steers, 5 reasoners |
-| `kill -9` of the server mid-hunt | Real stack | Resumes, and triages cases the crash stranded |
-| `kill -9` of the actor runtime mid-hunt | Real stack | State kept, scouts restart, hunt finishes |
+| Test suite and types | `bun test`, `tsc` | 138 pass, clean |
+| Case dedupe, grouped cases and no budget overshoot | `verify-actors.ts` on real actors | 1 first and 4 duplicates, 600 of 600 cases kept, 0 overshoot |
+| Full hunt on real actors and real Relay | New Balance, Luna and Decisions, $0.50 budget | Stopped at its limit at $0.43: 542 pages, 76 awaiting review, 4 steers, 2 reasoners, about 20 actor processes, no errors. The longest wait for the hunt view was about 15s, during bursts of new pages |
+| `kill -9` of the server mid-hunt | Real stack, before cases were grouped | Resumes, and triages cases the crash stranded |
+| `kill -9` of the actor runtime mid-hunt | Real stack, before cases were grouped | State kept, scouts restart, hunt finishes |
 | Laya wire format | Sidecar 0.4.18 against the tape | Median 61ms, p95 473ms, triage 25/27 on synthetic data |
 | Dashboard | Browser, offline demo | Search, weaving, spider details, approve, reject, finished hunt reopened, Review, 375px width without page scroll |
 
 ## What has not been verified
 
 - **Classifier accuracy on the real web:** see the hunt in the table above. Laya flagged pages that warn about scams as well as scams, so a human decision still matters.
-- **OpenAI:** no key was available. The Decisions and Responses adapters, the live search source and `gpt-6-luna` have only run against stubs. Real prices and response shapes may differ.
-- **Reasoning quality:** every knowledge base and verdict so far came from `mock-reasoner` and `tapes/kb.json`. The real presences in that file are made up.
+- **OpenAI prices:** the Decisions API, Luna and web search have run for real, but the prices come from resellers and may differ from OpenAI's bill.
+- **Reasoning quality:** knowledge bases and verdicts now come from Luna, but nobody has checked how accurate they are.
 - **Reasoner disagreement in the UI:** the machine and tests cover it, but no browser run produced one.
 
 ## Known limits
 
+- The local actor runtime runs one process per live actor, so cases share 16 actors per brand. Hunts started on the file store (`.customs/live`) don't appear on the actor store.
+- Relay can take seconds a call. Sends never hold up an agent: direct messages go first, and when more than 100 channel posts are waiting the oldest are dropped. The actors stay the record of what happened.
 - A crash in the instant between creating a case and adding it to its hunt loses that case from the hunt's list. A later report only counts as a duplicate.
 - Screenshot capture needs a sandbox vendor and isn't built, so live mode has no visual evidence. The other P2 items in the plan are also not built.
 - One server death early in development was never explained or reproduced. A later outage test found a startup crash that could be the same thing, now fixed.

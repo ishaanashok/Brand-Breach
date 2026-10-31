@@ -7,10 +7,41 @@ const name = (c: string) => c.replace(/^#/, '')
 export async function withBackoff<T>(fn: () => Promise<T>, tries = 8, baseMs = 250): Promise<T> {
   for (let i = 1; ; i++) {
     try { return await fn() } catch (err: any) {
-      const busy = err?.retryable === true || /retry with backoff|capacity is busy/i.test(String(err))
+      const busy = err?.retryable === true || /retry with backoff|capacity is busy|temporarily overloaded/i.test(String(err))
       if (i >= tries || !busy) throw err
       await Bun.sleep(err?.retryAfterMs ?? baseMs * 2 ** (i - 1) * (0.5 + Math.random()))
     }
+  }
+}
+
+const OUTBOX_WORKERS = 4
+const OUTBOX_CHATTER = 100
+
+/**
+ * Relay can take seconds a call, and all state lives in the actors, so no agent waits on a send.
+ * Direct messages go first because agents act on them. Channel posts are a record, and the oldest are dropped.
+ */
+export function outbox(workers = OUTBOX_WORKERS, maxChatter = OUTBOX_CHATTER) {
+  const direct: (() => Promise<void>)[] = []
+  const chatter: (() => Promise<void>)[] = []
+  let running = 0
+  const pump = () => {
+    while (running < workers && (direct.length || chatter.length)) {
+      const job = (direct.shift() ?? chatter.shift())!
+      running++
+      job().catch(err => console.error(`[customs] relay send failed: ${err}`)).finally(() => { running--; pump() })
+    }
+  }
+  return {
+    add(to: string, job: () => Promise<void>) {
+      if (to.startsWith('@')) direct.push(job)
+      else {
+        chatter.push(job)
+        if (chatter.length > maxChatter) chatter.shift()
+      }
+      pump()
+    },
+    clearChatter() { chatter.length = 0 },
   }
 }
 
@@ -49,7 +80,8 @@ export async function relayBus(o: { workspaceName: string; state: RelayState; sa
   relay.addListener('message.created', emit(({ envelope, message }) => ({ to: `#${envelope.channel?.name}`, text: message.text })))
   relay.addListener('dm.received', emit(({ message }) => readDm(message.text)))
 
-  let channelsReady = false
+  let channels: Promise<void> | null = null
+  const sending = outbox()
   return {
     async register(agentName): Promise<Participant> {
       // Relay refuses a second register for a name, so a restarted server reconnects with the saved token.
@@ -58,17 +90,20 @@ export async function relayBus(o: { workspaceName: string; state: RelayState; sa
         ? await withBackoff(() => relay.workspace.reconnect({ apiToken: saved }))
         : await withBackoff(() => relay.workspace.register({ name: agentName, type: 'agent' }))
       if (agent.token) { state.tokens[agentName] = agent.token; o.save(state) }
-      if (!channelsReady) {
-        channelsReady = true
+      channels ??= (async () => {
         for (const c of [HUNT_CHANNEL, REVIEW_CHANNEL]) await withBackoff(() => agent.channels.create({ name: name(c), topic: 'Customs' })).catch(() => {})
+      })()
+      await channels
+      await Promise.all([HUNT_CHANNEL, REVIEW_CHANNEL].map(c => withBackoff(() => agent.channels.join(name(c))).catch(() => {})))
+      return {
+        name: agentName,
+        send: async (to, text) => { sending.add(to, async () => { await withBackoff(() => agent.sendMessage({ to, text: to.startsWith('@') ? addressDm(to, text) : text })) }) },
       }
-      for (const c of [HUNT_CHANNEL, REVIEW_CHANNEL]) await withBackoff(() => agent.channels.join(name(c))).catch(() => {})
-      return { name: agentName, send: async (to, text) => { await withBackoff(() => agent.sendMessage({ to, text: to.startsWith('@') ? addressDm(to, text) : text })) } }
     },
     onMessage(fn) {
       listeners.add(fn)
       return () => { listeners.delete(fn) }
     },
-    async close() { listeners.clear() },
+    async close() { listeners.clear(); sending.clearChatter() },
   }
 }

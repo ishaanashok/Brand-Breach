@@ -21,7 +21,7 @@ export async function verifyTick(d: VerifierDeps): Promise<number> {
   const hunt = d.store.hunt(d.huntId)
   const brand = d.store.brand(d.brandSlug)
   const h = await hunt.snapshot()
-  const cases = await Promise.all(h.caseIds.map(id => d.store.kase(id).snapshot()))
+  const cases = await d.store.cases(h.caseIds)
   const triaged = cases.filter(c => c.state === 'triaged' && c.triage)
   if (!triaged.length) return 0
 

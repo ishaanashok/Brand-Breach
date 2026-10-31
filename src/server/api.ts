@@ -58,7 +58,7 @@ export async function createServer(cfg: AppConfig): Promise<App> {
     const hunt = await store.hunt(id).snapshot()
     if (!hunt.input) return null
     const [cases, brand] = await Promise.all([
-      Promise.all(hunt.caseIds.map(c => store.kase(c).snapshot())),
+      store.cases(hunt.caseIds),
       store.brand(slug(hunt.input.brand)).snapshot(),
     ])
     return { hunt, cases, brand }
@@ -223,7 +223,7 @@ export async function createServer(cfg: AppConfig): Promise<App> {
     }
     const hunts = (await Promise.all((await store.playbook().listHunts()).map(h => store.hunt(h).snapshot())))
       .filter(h => h.input && slug(h.input.brand) === brandSlug)
-    const cases = await Promise.all([...new Set(hunts.flatMap(h => h.caseIds))].map(c => store.kase(c).snapshot()))
+    const cases = await store.cases([...new Set(hunts.flatMap(h => h.caseIds))])
     const graph = buildGraph(b, cases)
     const node = new URL(req.url).searchParams.get('node')
     const focus = (g: Graph): Graph => {

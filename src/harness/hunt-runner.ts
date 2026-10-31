@@ -85,9 +85,8 @@ export class HuntRunner {
     this.input = input
     this.brandSlug = slug(input.brand)
     const { store, bus } = this.d
-    const orchestratorMe = await bus.register('orchestrator')
-    this.human = await bus.register('reviewer')
-    const verifierMe = await bus.register('verifier')
+    const [orchestratorMe, human, verifierMe] = await Promise.all(['orchestrator', 'reviewer', 'verifier'].map(n => bus.register(n))) as [Participant, Participant, Participant]
+    this.human = human
 
     this.unsub = bus.onMessage(m => {
       const p = parseTag(m.text)
@@ -99,7 +98,7 @@ export class HuntRunner {
     if (this.d.reasoner && announce) await ensureKb({ huntId: this.huntId, input, brandSlug: this.brandSlug, store, reasoner: this.d.reasoner, me: orchestratorMe })
 
     const known = await store.hunt(this.huntId).snapshot()
-    const caseUrls = await Promise.all(known.caseIds.map(async id => (await store.kase(id).snapshot()).hit?.url))
+    const caseUrls = (await store.cases(known.caseIds)).map(c => c.hit?.url)
     this.d.source.restore?.({
       searches: known.counters.searches ?? 0,
       urls: [...caseUrls.filter((u): u is string => !!u), ...Object.keys((await store.brand(this.brandSlug).snapshot()).seen)],
@@ -150,7 +149,7 @@ export class HuntRunner {
 
   private async recoverStranded(surface: Surface) {
     const { caseIds } = await this.d.store.hunt(this.huntId).snapshot()
-    const cases = await Promise.all(caseIds.map(id => this.d.store.kase(id).snapshot()))
+    const cases = await this.d.store.cases(caseIds)
     const stranded = cases.filter(c => c.state === 'new' && c.hit!.surface === surface)
     if (stranded.length) await this.d.store.hunt(this.huntId).log(`Recovering ${stranded.length} cases left untriaged by a crash`, Date.now())
     const scout = this.scouts.find(s => s.name === surface)!
@@ -183,7 +182,7 @@ export class HuntRunner {
 
   private async hasUnclassified() {
     const { caseIds } = await this.d.store.hunt(this.huntId).snapshot()
-    const cases = await Promise.all(caseIds.map(id => this.d.store.kase(id).snapshot()))
+    const cases = await this.d.store.cases(caseIds)
     return cases.some(c => c.state === 'new')
   }
 
@@ -192,7 +191,7 @@ export class HuntRunner {
     const remaining = h.input!.budgetUsd - h.spent
     if (remaining < this.d.verifyEstUsd) return false
     const { thresholds } = await this.d.store.brand(this.brandSlug).snapshot()
-    const cases = await Promise.all(h.caseIds.map(id => this.d.store.kase(id).snapshot()))
+    const cases = await this.d.store.cases(h.caseIds)
     const earns = (score: number, deciderId: string) => score >= thresholdFor(thresholds[deciderId] ?? DEFAULT_THRESHOLD, this.input.precision)
     return cases.some(c => c.state === 'shortlisted' || (c.state === 'triaged' && earns(c.triage!.score, c.triage!.deciderId)))
   }

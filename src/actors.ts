@@ -39,6 +39,7 @@ export class Case extends Actor {
   async setTriage(t: DecisionRecord): Promise<null> { return this.#run(kase.setTriage(this.s, t)) }
   async markUndecided(reason: string): Promise<null> { return this.#run(kase.markUndecided(this.s, reason)) }
   async shortlist(): Promise<boolean> { return this.#run(kase.shortlist(this.s)) }
+  async addEvidence(text: string): Promise<null> { return this.#run(kase.addEvidence(this.s, text)) }
   async setVerification(r: Verification): Promise<null> { return this.#run(kase.setVerification(this.s, r)) }
   async claimReasoning(agent: string, trigger: Reasoning['trigger'], now: number, staleMs: number): Promise<boolean> { return this.#run(kase.claimReasoning(this.s, agent, trigger, now, staleMs)) }
   async failReasoning(error: string): Promise<null> { return this.#run(kase.failReasoning(this.s, error)) }
@@ -47,6 +48,36 @@ export class Case extends Actor {
   async decide(decision: 'approve' | 'reject', by: string, now: number): Promise<{ changed: boolean; state: CaseState['state'] }> { return this.#run(kase.decide(this.s, decision, by, now)) }
   async recheck(result: string, now: number): Promise<null> { return this.#run(kase.recheck(this.s, result, now)) }
   async snapshot(): Promise<CaseState> { return this.s }
+}
+
+/**
+ * Holds many cases, because the local runtime runs one process per live actor and a hunt finds hundreds of pages.
+ * Calls still run one at a time, so a case keeps the same guarantees it had as its own actor.
+ */
+export class CaseShard extends Actor {
+  @Persisted cases: Record<string, CaseState> = {}
+  #run<R>(id: string, step: (s: CaseState) => [CaseState, R]): R {
+    const before = this.cases[id] ?? initialCase()
+    const [next, r] = step(before)
+    if (next !== before) this.cases = { ...this.cases, [id]: next }
+    return r
+  }
+
+  async report(key: string, id: string, brandSlug: string, huntId: string, h: Hit, reporter: string, now: number): Promise<{ first: boolean; state: CaseState['state'] }> { return this.#run(key, s => kase.report(s, id, brandSlug, huntId, h, reporter, now)) }
+  async skip(key: string, reason: string): Promise<null> { return this.#run(key, s => kase.skip(s, reason)) }
+  async setTriage(key: string, t: DecisionRecord): Promise<null> { return this.#run(key, s => kase.setTriage(s, t)) }
+  async markUndecided(key: string, reason: string): Promise<null> { return this.#run(key, s => kase.markUndecided(s, reason)) }
+  async shortlist(key: string): Promise<boolean> { return this.#run(key, s => kase.shortlist(s)) }
+  async addEvidence(key: string, text: string): Promise<null> { return this.#run(key, s => kase.addEvidence(s, text)) }
+  async setVerification(key: string, r: Verification): Promise<null> { return this.#run(key, s => kase.setVerification(s, r)) }
+  async claimReasoning(key: string, agent: string, trigger: Reasoning['trigger'], now: number, staleMs: number): Promise<boolean> { return this.#run(key, s => kase.claimReasoning(s, agent, trigger, now, staleMs)) }
+  async failReasoning(key: string, error: string): Promise<null> { return this.#run(key, s => kase.failReasoning(s, error)) }
+  async setReasoning(key: string, r: Pick<Reasoning, 'reasonerId' | 'verdict' | 'confidence' | 'reasoning' | 'usd' | 'latencyMs'>): Promise<{ state: CaseState['state']; newlyVerified: boolean }> { return this.#run(key, s => kase.setReasoning(s, r)) }
+  async draftNotice(key: string, notice: string): Promise<null> { return this.#run(key, s => kase.draftNotice(s, notice)) }
+  async decide(key: string, decision: 'approve' | 'reject', by: string, now: number): Promise<{ changed: boolean; state: CaseState['state'] }> { return this.#run(key, s => kase.decide(s, decision, by, now)) }
+  async recheck(key: string, result: string, now: number): Promise<null> { return this.#run(key, s => kase.recheck(s, result, now)) }
+  async snapshot(key: string): Promise<CaseState> { return this.cases[key] ?? initialCase() }
+  async snapshotMany(keys: string[]): Promise<CaseState[]> { return keys.map(k => this.cases[k] ?? initialCase()) }
 }
 
 export class Brand extends Actor {
